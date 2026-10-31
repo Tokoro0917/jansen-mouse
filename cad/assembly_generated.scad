@@ -99,15 +99,16 @@ color("Black", 0.6) translate([-30,-10,-12.0]) cube([60, 30, 24.0]);  // 電装�
 color("White", 0.3) translate([-90, -37.73, -90]) cube([180, 1, 180]);  // 床（1 区画分）
 }
 // 機体の部品（jansen/body.py の default_design）
-color("LightSteelBlue") mirror([0, 1, 0]) translate([0, 0, -36.73]) { chassis(); motor_clamp(); }
+color("LightSteelBlue") mirror([0, 1, 0]) translate([0, 0, -36.73]) { bridge(); motor_clamp(); standoffs(); }
 color("Black") mirror([0, 1, 0]) translate([0, 0, -36.73]) placed_holders();
 color("Silver") translate([-34.00, -12.50, -7.00]) cube([41.00, 12.00, 14.00]);  // motor_L
 color("Silver") translate([-34.00, 0.50, -7.00]) cube([41.00, 12.00, 14.00]);  // motor_R
-color("DarkGreen") translate([-40.00, -30.00, 31.50]) cube([80.00, 60.00, 1.00]);  // deck
-color("Navy") translate([-26.00, -10.50, 32.50]) cube([53.00, 21.00, 4.00]);  // mcu
-color("Gold") translate([-20.00, -31.00, 32.50]) cube([34.00, 18.00, 12.00]);  // battery
-color("Purple") translate([-6.00, 16.00, 32.50]) cube([12.00, 12.00, 1.00]);  // imu
-color("Maroon") translate([28.00, 16.00, 32.50]) cube([10.00, 12.00, 2.00]);  // driver
+color("DarkGreen") translate([-40.00, -30.00, 27.50]) cube([80.00, 60.00, 1.00]);  // deck
+color("DarkGreen") translate([40.00, -12.50, 27.50]) cube([24.00, 25.00, 1.00]);  // deck_front
+color("Navy") translate([-26.00, -10.50, 28.50]) cube([53.00, 21.00, 4.00]);  // mcu
+color("Gold") translate([-20.00, -31.00, 28.50]) cube([34.00, 18.00, 12.00]);  // battery
+color("Purple") translate([-6.00, 16.00, 28.50]) cube([12.00, 12.00, 1.00]);  // imu
+color("Maroon") translate([28.00, 16.00, 28.50]) cube([10.00, 12.00, 2.00]);  // driver
 color("Teal") translate([40.00, -12.50, 8.27]) cube([24.00, 25.00, 0.80]);  // sensor_board
 color("Red", 0.6) hull() { translate([50.00, -5.00, 2.87]) sphere(0.8, $fn=8); translate([84.00, -5.00, 2.87]) sphere(0.8, $fn=8); }  // 壁センサ FL の光路
 color("Red", 0.6) hull() { translate([50.00, 5.00, 2.87]) sphere(0.8, $fn=8); translate([84.00, 5.00, 2.87]) sphere(0.8, $fn=8); }  // 壁センサ FR の光路

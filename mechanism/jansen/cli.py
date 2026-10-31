@@ -19,6 +19,7 @@ from pathlib import Path
 
 from .assembly import BuildParams, PART_JOINTS, footprint
 from .body import (HOLDER_D, HOLDER_EMITTER_DEPTH, HOLDER_H, HOLDER_RECEIVER_DEPTH, HOLDER_W, SENSOR_LAYOUT,
+                   SENSOR_STANDOFFS,
                    default_design, evaluate, leg_obstacles, sensor_ray)
 from .drive import crank_torque, drive_profile, spin_turn_torque
 from .gait import standard_side, support_analysis
@@ -31,7 +32,7 @@ CORRIDOR_MM = 168.0    # 区画 180 mm - 壁厚 12 mm
 CELL_MM = 180.0
 BUILD = BuildParams()
 # 駆動解析の前提（docs/design.md「駆動とモータ」参照）
-MASS_KG = 0.21
+MASS_KG = 0.20
 FOOT_MU = 0.6
 LINK_EFFICIENCY = 0.6
 SEARCH_SPEED = 60.0     # [mm/s]
@@ -272,8 +273,9 @@ def build_scad(scale: float, throws: int) -> str:
 
     body = body + "\n// 機体の部品配置（機体座標: x 前, y 左, z 上。jansen/body.py）\n" + "\n".join([
         f"CRANK_H = {-gait_metrics(leg).ground_y:.2f};",
-        f"CHASSIS_X = {rng('chassis', 'x')}; CHASSIS_Y = {rng('chassis', 'y')}; CHASSIS_Z = {rng('chassis', 'z')};",
-        f"FRONT_X = {rng('chassis_front', 'x')}; FRONT_Z = {rng('chassis_front', 'z')};",
+        f"BRIDGE_X = {rng('bridge', 'x')}; BRIDGE_Y = {rng('bridge', 'y')}; BRIDGE_Z = {rng('bridge', 'z')};",
+        f"DECK_Z = {rng('deck', 'z')}; DECK_FRONT_X = {rng('deck_front', 'x')}; DECK_FRONT_Y = {rng('deck_front', 'y')};",
+        "SENSOR_STANDOFFS = [" + ", ".join(f"[{x:.2f}, {y:.2f}]" for x, y in SENSOR_STANDOFFS) + "];  // 壁センサ基板を吊るスペーサ (x, y)",
         f"SENSOR_BOARD_X = {rng('sensor_board', 'x')}; SENSOR_BOARD_Y = {rng('sensor_board', 'y')}; "
         f"SENSOR_BOARD_Z = {rng('sensor_board', 'z')};",
         "SENSORS = [" + ", ".join(f"[{x:.2f}, {y:.2f}, {a:.1f}]" for _, (x, y), a in SENSOR_LAYOUT)
@@ -345,11 +347,11 @@ def build_assembly(scale: float, throws: int, theta_deg: float) -> str:
     d = default_design(scale, throws, CENTER_WIDTH, BUILD)
     h = -ground
     out.append("// 機体の部品（jansen/body.py の default_design）")
-    out.append(f"color(\"LightSteelBlue\") mirror([0, 1, 0]) translate([0, 0, {-h:.2f}]) {{ chassis(); motor_clamp(); }}")
+    out.append(f"color(\"LightSteelBlue\") mirror([0, 1, 0]) translate([0, 0, {-h:.2f}]) {{ bridge(); motor_clamp(); standoffs(); }}")
     out.append(f"color(\"Black\") mirror([0, 1, 0]) translate([0, 0, {-h:.2f}]) placed_holders();")
     for c in d.components:
-        if c.name.startswith("chassis") or c.name.startswith("holder_"):
-            continue  # 実際の形状（chassis()・sensor_holder()）で描く
+        if c.name == "bridge" or c.name.startswith("holder_") or c.name.startswith("standoff"):
+            continue  # 実際の形状（bridge()・sensor_holder()・standoffs()）で描く
         out.append(f"color(\"{c.color}\") translate([{c.x[0]:.2f}, {-c.y[1]:.2f}, {c.z[0] - h:.2f}]) "
                    f"cube([{c.x[1] - c.x[0]:.2f}, {c.y[1] - c.y[0]:.2f}, {c.z[1] - c.z[0]:.2f}]);  // {c.name}")
     for sn in d.sensors:

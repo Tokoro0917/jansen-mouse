@@ -116,37 +116,46 @@ def default_design(scale: float, throws: int, center_width: float, bp: BuildPara
     frame_top = max(o.poly.bounds[3] for o in obs if o.name.startswith("frame"))
     deck_z = frame_top + 2.0
     cw = center_width / 2
+    la = JansenLeg(scale=scale).length("a")
+    motor_x = (-34.0, 7.0)
+    clamp_x = (motor_x[0] - 4, motor_x[1] + 4)       # モータ押さえのネジ（モータの前後の端の外）
+    bridge_x = (clamp_x[0] - 3, max(clamp_x[1], la) + 3)
+    bridge_z = (h + 7.5, deck_z)
+    bw = center_width - 1
+    bh = bridge_z[1] - bridge_z[0]
+    # ブリッジの体積: 天板 2.5 mm + タイロッドの所のリブ 5 mm × 2 + モータ押さえのボス φ6 × 2（樹脂は 6 割）
+    bridge_vol = ((bridge_x[1] - bridge_x[0]) * bw * 2.5 + 2 * 5.0 * bw * bh + 2 * math.pi * 3.0 ** 2 * bh)
     d = BodyDesign(scale, throws, center_width, bp)
     d.components = [
         # 中央の溝にモータ 2 個を横に並べる。出力軸（直交）がクランク軸と同軸で、内側のフレーム板を貫いて
         # 最初のクランクウェブに直接入る。本体は後ろ向きに伸ばし、前方は前壁センサのために空ける。
-        Component("motor_L", (-34, 7), (0.5, cw - 0.5), (h - 7, h + 7), 12.0, "Silver",
+        Component("motor_L", motor_x, (0.5, cw - 0.5), (h - 7, h + 7), 12.0, "Silver",
                   "N20 ウォームギヤモータ + エンコーダ（外形 12 x 14 x 41 を仮定）"),
-        Component("motor_R", (-34, 7), (-(cw - 0.5), -0.5), (h - 7, h + 7), 12.0, "Silver",
+        Component("motor_R", motor_x, (-(cw - 0.5), -0.5), (h - 7, h + 7), 12.0, "Silver",
                   "同上"),
-        # メイン基板は脚とフレーム板より上。機体の幅いっぱいまで使える。
+        # メイン基板は脚とフレーム板より上。機体の幅いっぱいまで使える。前に細い舌を出し、壁センサ基板を吊る
         Component("deck", (-40, 40), (-30, 30), (deck_z, deck_z + 1.0), 80 * 60 * 1.0 * FR4_DENSITY, "DarkGreen",
-                  "メイン基板 80 x 60 x t1.0（中央シャーシの上面にネジ止め）"),
+                  "メイン基板 80 x 60 x t1.0（ブリッジの上面にネジ止め）"),
+        Component("deck_front", (40, SENSOR_BOARD_X1), (-(cw - 0.5), cw - 0.5), (deck_z, deck_z + 1.0),
+                  (SENSOR_BOARD_X1 - 40) * bw * 1.0 * FR4_DENSITY, "DarkGreen",
+                  "メイン基板の前の舌（下に壁センサ基板を吊る）"),
         Component("mcu", (-26, 27), (-10.5, 10.5), (deck_z + 1, deck_z + 5), 4.5, "Navy", "Black Pill（ピンヘッダなし、直付け）"),
         Component("battery", (-20, 14), (13, 31), (deck_z + 1, deck_z + 13), 13.0, "Gold", "2S LiPo 200 mAh"),
         Component("imu", (-6, 6), (-28, -16), (deck_z + 1, deck_z + 2), 1.0, "Purple", "ICM-20602 基板"),
         Component("driver", (28, 38), (-28, -16), (deck_z + 1, deck_z + 3), 1.0, "Maroon", "DRV8835 基板"),
-        # 中央シャーシ（3D プリント）: 左右の内側フレーム板を M2 ネジでつなぎ、モータを上から押さえ、
-        # 上面にメイン基板、前方の腕に前壁センサ基板を付ける。重量は外形の 25 % が樹脂（肉抜き）として見積もる。
-        # 中央シャーシ（3D プリント）: 左右の内側フレーム板をタイロッドでつなぎ、モータを上から押さえ、
-        # 上面にメイン基板を付ける。前方へ脚の前まで伸ばし、その下にセンサ基板を付ける。
-        # 重量は外形の 25 % が樹脂（肉抜き）として見積もる。
-        Component("chassis", (-40, 40), (-(cw - 0.5), cw - 0.5), (h + 7.5, deck_z),
-                  80 * (center_width - 1) * (deck_z - h - 7.5) * 0.25 * 1.24e-3, "LightSteelBlue",
-                  "中央シャーシ（PLA、肉抜き）"),
-        Component("chassis_front", (40, SENSOR_BOARD_X1), (-(cw - 0.5), cw - 0.5), (SENSOR_BOARD_Z + 1.0, deck_z),
-                  (SENSOR_BOARD_X1 - 40) * (center_width - 1) * (deck_z - SENSOR_BOARD_Z - 1) * 0.25 * 1.24e-3,
-                  "LightSteelBlue", "シャーシの前部（下面にセンサ基板を付ける）"),
-        # 壁センサ基板（KOGUMA Mk4 と同じく 4 本を 1 枚に）: 水平に置き、ホルダを裏に下げる
+        # ブリッジ（3D プリント、旧「中央シャーシ」）: 左右の内側フレーム板をタイロッドでつなぎ、
+        # モータを上から押さえ、上面にメイン基板を付ける。必要な所（天板・リブ・ボス）だけの形。
+        Component("bridge", bridge_x, (-(cw - 0.5), cw - 0.5), bridge_z, bridge_vol * 0.6 * 1.24e-3,
+                  "LightSteelBlue", "ブリッジ（PLA）。天板とタイロッドの所のリブだけ"),
+        # 壁センサ基板（KOGUMA Mk4 と同じく 4 本を 1 枚に）: 水平に置き、ホルダを裏に下げる。
+        # メイン基板の舌から M2 スペーサ 4 本で吊る（スペーサは光の円すいを避けた位置）
         Component("sensor_board", (40, SENSOR_BOARD_X1), (-(cw - 0.5), cw - 0.5), (SENSOR_BOARD_Z, SENSOR_BOARD_Z + 0.8),
-                  (SENSOR_BOARD_X1 - 40) * (center_width - 1) * 0.8 * FR4_DENSITY + 1.0, "Teal",
+                  (SENSOR_BOARD_X1 - 40) * bw * 0.8 * FR4_DENSITY + 1.0, "Teal",
                   "壁センサ基板 t0.8（発光の定電流ドライバ・受光アンプを含む）"),
     ]
+    for i, (sx, sy) in enumerate(SENSOR_STANDOFFS):
+        d.components.append(Component(f"standoff{i}", (sx - 2, sx + 2), (sy - 2, sy + 2),
+                                      (SENSOR_BOARD_Z + 0.8, deck_z), 0.3, "Gray", "M2 スペーサ（樹脂）"))
     for name, (x, y), a in SENSOR_LAYOUT:
         d.components.append(holder_component(name, x, y, a))
     d.sensors = [Sensor(name, (x, y, beam_z()), a, f"holder_{name}") for name, (x, y), a in SENSOR_LAYOUT]
@@ -158,7 +167,9 @@ def default_design(scale: float, throws: int, center_width: float, bp: BuildPara
 # - L / R: 脚より前（x 60）で真横。脚はセンサの高さでは |x| 44 mm までしか来ないので、光の円すいが脚に当たらない
 # KOGUMA Mk4 は前を外へ 7°、横を交差させて前の柱を見るが、本機は区画中心で止まってその区画の壁を見るので、
 # 前は平行（傾きの検出のため）、横は真横（その区画の横壁、柱から 24 mm 離れた所を見る）にした。
-SENSOR_BOARD_X1 = 64.0   # センサ基板・シャーシ前部の前端 [mm]
+SENSOR_BOARD_X1 = 64.0   # センサ基板・メイン基板の舌の前端 [mm]
+# 壁センサ基板を吊るスペーサの位置 (x, y)。ホルダと光の円すいを避ける（sensor_blockers で確認）
+SENSOR_STANDOFFS = [(42.0, 9.0), (42.0, -9.0), (53.0, 10.5), (53.0, -10.5)]
 SENSOR_BOARD_Z = 45.0    # センサ基板の下面の高さ [mm]
 SENSOR_LAYOUT = [
     ("FL", (50.0, 5.0), 0.0),

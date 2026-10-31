@@ -24,20 +24,20 @@ plt.rcParams["font.family"] = ["IPAGothic", "IPAPGothic", "DejaVu Sans"]
 PARTS = [
     (1, "脚（12 本）", "テオヤンセン機構。片側 3 組 × 前後 2 本。足先にゴム", "#e07a5f"),
     (2, "フレーム板", "1.5 mm 厚、片側 4 枚。脚の固定ピンとクランク軸を支える", "#888888"),
-    (3, "タイロッド", "M2 全ねじ 2 本。全フレーム板と中央シャーシを横に貫いて締める", "#444444"),
+    (3, "タイロッド", "M2 全ねじ 2 本。全フレーム板とブリッジを横に貫いて締める", "#444444"),
     (4, "モータ", "N20 ウォームギヤ + エンコーダ × 2。出力軸がクランク軸に直結", "#b0b0b0"),
-    (5, "中央シャーシ", "3D プリント。左右の脚群をつなぎ、モータ・基板を支える", "#b0c4de"),
+    (5, "ブリッジ", "3D プリント。左右の脚群をつなぎ、モータを押さえ、メイン基板を支える", "#b0c4de"),
     (6, "モータ押さえ", "3D プリント。モータを下から支える", "#7f9cc0"),
-    (7, "メイン基板", "80 × 60 mm。マイコン・ドライバ・IMU・電池を載せる", "#2e7d32"),
+    (7, "メイン基板", "80 × 60 mm + 前の舌。マイコン・ドライバ・IMU・電池を載せ、壁センサ基板を吊る", "#2e7d32"),
     (8, "マイコン", "Black Pill（STM32F411）", "#1a237e"),
     (9, "電池", "2S LiPo 200 mAh", "#f2c14e"),
     (10, "IMU", "ジャイロ（旋回中心の近く）", "#7b1fa2"),
     (11, "モータドライバ", "DRV8835", "#8d1c1c"),
-    (12, "壁センサ基板", "4 本の壁センサの回路（KOGUMA Mk4 と同じ）", "#00897b"),
+    (12, "壁センサ基板", "4 本の壁センサの回路（KOGUMA Mk4 と同じ）。スペーサ 4 本でメイン基板から吊る", "#00897b"),
     (13, "壁センサ", "黒いホルダに発光・受光。FL/FR は前、L/R は横", "#111111"),
 ]
 COLOR = {n: c for n, _, _, c in PARTS}
-COMPONENT_PART = {"motor_L": 4, "motor_R": 4, "chassis": 5, "chassis_front": 5, "deck": 7, "mcu": 8,
+COMPONENT_PART = {"motor_L": 4, "motor_R": 4, "bridge": 5, "deck": 7, "deck_front": 7, "mcu": 8,
                   "battery": 9, "imu": 10, "driver": 11, "sensor_board": 12}
 
 
@@ -85,9 +85,19 @@ def three_views(scale, throws, center_width, bp, out: Path, theta_deg: float = 3
     frame = [o for o in obs if o.name.startswith("frame")][0].poly
     ax.add_patch(patches.Polygon(list(frame.exterior.coords), closed=True, facecolor=COLOR[2],
                                  edgecolor="k", lw=0.5, alpha=0.45, zorder=3))
-    for name in ("motor_L", "chassis", "chassis_front", "deck", "mcu", "battery", "sensor_board"):
+    for name in ("motor_L", "deck", "deck_front", "mcu", "battery", "sensor_board"):
         c = comps[name]
-        _rect(ax, c.x[0], c.x[1], c.z[0], c.z[1], COLOR[COMPONENT_PART[name]], alpha=0.8 if name.startswith("chassis") else 0.95, z=4)
+        _rect(ax, c.x[0], c.x[1], c.z[0], c.z[1], COLOR[COMPONENT_PART[name]], z=4)
+    # ブリッジは実際の形（天板・タイロッドの所のリブ・モータ押さえのボス）で描く
+    b = comps["bridge"]
+    _rect(ax, b.x[0], b.x[1], b.z[1] - 2.5, b.z[1], COLOR[5], z=4)
+    for sx in (-la, la):
+        _rect(ax, sx - 2.5, sx + 2.5, b.z[0], b.z[1], COLOR[5], z=4)
+    for cx in (comps["motor_L"].x[0] - 4, comps["motor_L"].x[1] + 4):
+        _rect(ax, cx - 3, cx + 3, b.z[0], b.z[1], COLOR[5], z=4)
+    for c in d.components:
+        if c.name.startswith("standoff") and c.y[0] > 0:
+            _rect(ax, c.x[0] + 1, c.x[1] - 1, c.z[0], c.z[1], "#999999", z=5)
     clamp_x = (comps["motor_L"].x[0] - 7, comps["motor_L"].x[1] + 7)
     _rect(ax, clamp_x[0], clamp_x[1], comps["motor_L"].z[0] - 2, comps["motor_L"].z[0], COLOR[6], z=4)
     for s in d.sensors:
@@ -99,7 +109,7 @@ def three_views(scale, throws, center_width, bp, out: Path, theta_deg: float = 3
     for sx in (-la, la):
         ax.add_patch(patches.Circle((sx, tie_z), 1.3, color=COLOR[3], zorder=8))
     ax.add_patch(patches.Circle((0, h), 1.6, color="k", zorder=8))
-    ax.text(3, h - 1, "← クランク軸", fontsize=8, va="center", zorder=9)
+    ax.text(3, h - 1, f"← クランク軸（高さ {h:.1f}）", fontsize=8, va="center", zorder=9)
     ax.axhline(0, color="k", lw=1.2)
     ax.add_patch(patches.Rectangle((84, 0), 12, 50, facecolor="#e8dcc0", edgecolor="#9c8a60", zorder=0))
     ax.text(90, 52, "前の壁\n（高さ 50）", ha="center", fontsize=7)
@@ -123,7 +133,6 @@ def three_views(scale, throws, center_width, bp, out: Path, theta_deg: float = 3
     ax.text((x_rear + x_front) / 2, -13, f"全長 {x_front - x_rear:.1f}", ha="center", fontsize=8)
     ax.annotate("", (x_rear - 6, 0), (x_rear - 6, top), arrowprops=dict(arrowstyle="<->", lw=0.8))
     ax.text(x_rear - 8, top / 2, f"高さ {top:.1f}", rotation=90, ha="right", va="center", fontsize=8)
-    ax.text(3, h + 2, f"{h:.1f}", fontsize=7)
     ax.set_xlim(-65, 100)
     ax.set_ylim(-18, 92)
 
@@ -137,10 +146,13 @@ def three_views(scale, throws, center_width, bp, out: Path, theta_deg: float = 3
         else:
             fx0, _, fx1, _ = o.poly.bounds
             _rect(ax, o.y0, o.y1, fx0, fx1, COLOR[2], alpha=0.8, z=2)
-    for name in ("motor_L", "motor_R", "chassis", "chassis_front", "sensor_board"):
+    for name in ("motor_L", "motor_R", "bridge", "sensor_board"):
         c = comps[name]
         _rect(ax, -c.y[1], -c.y[0], c.x[0], c.x[1], COLOR[COMPONENT_PART[name]],
-              alpha=0.35 if name.startswith("chassis") or name == "sensor_board" else 0.95, z=3 if name.startswith("chassis") else 4)
+              alpha=0.35 if name in ("bridge", "sensor_board") else 0.95, z=3 if name == "bridge" else 4)
+    for c in d.components:
+        if c.name.startswith("standoff"):
+            ax.add_patch(patches.Circle((-(c.y[0] + c.y[1]) / 2, (c.x[0] + c.x[1]) / 2), 1.8, color="#777777", zorder=6))
     y_out = max(abs(o.y1) for o in obs)
     for sx in (-la, la):
         ax.plot([-y_out - 2, y_out + 2], [sx, sx], color=COLOR[3], lw=1.6, zorder=6)
@@ -176,7 +188,7 @@ def three_views(scale, throws, center_width, bp, out: Path, theta_deg: float = 3
     _tag(ax, 2, -y_out + 0.7, 10, -10, 8)
     _tag(ax, 3, 40, la, 0, 9)
     _tag(ax, 4, -6, -20, 0, 0)
-    _tag(ax, 5, 0, 30, 0, 0)
+    _tag(ax, 5, 0, 0, 0, 0)
     _tag(ax, 12, 0, 57, 16, 6)
     _tag(ax, 13, 13, 58, 12, -12)
     ax.set_xlim(-100, 100)
@@ -191,10 +203,10 @@ def three_views(scale, throws, center_width, bp, out: Path, theta_deg: float = 3
             _rect(ax, -o.y1, -o.y0, z0, z1, "#f4d6cc", alpha=1.0, z=1, ls="--")
         else:
             _rect(ax, -o.y1, -o.y0, z0, z1, COLOR[2], alpha=0.8, z=2)
-    for name in ("motor_L", "motor_R", "chassis", "deck", "mcu", "battery", "imu", "driver", "sensor_board"):
+    for name in ("motor_L", "motor_R", "bridge", "deck", "mcu", "battery", "imu", "driver", "sensor_board"):
         c = comps[name]
         _rect(ax, -c.y[1], -c.y[0], c.z[0], c.z[1], COLOR[COMPONENT_PART[name]],
-              alpha=0.6 if name == "chassis" else 0.95, z=3 if name == "chassis" else 4)
+              alpha=0.6 if name == "bridge" else 0.95, z=3 if name == "bridge" else 4)
     ax.plot([-y_out - 2, y_out + 2], [tie_z, tie_z], color=COLOR[3], lw=1.6, zorder=6)
     for s in d.sensors:
         hc = comps[s.board]
@@ -266,7 +278,7 @@ SCAD_COLORS = [
     ("#2e8b57", "脚のリンク c・f"),
     ("#808080", "フレーム板（片側 4 枚）"),
     ("#696969", "クランクウェブ（クランク軸の腕）"),
-    ("#b0c4de", "中央シャーシ・モータ押さえ"),
+    ("#b0c4de", "ブリッジ・モータ押さえ"),
     ("#006400", "メイン基板"),
     ("#000080", "マイコン（Black Pill）"),
     ("#ffd700", "電池（2S LiPo）"),
@@ -302,7 +314,7 @@ def overview_3d(renders: list[tuple[str, str]], out: Path) -> Path:
         ax.add_patch(patches.Rectangle((0, y - 0.018), 0.08, 0.036, transform=ax.transAxes, facecolor=c,
                                        edgecolor="k", lw=0.5))
         ax.text(0.11, y, name, transform=ax.transAxes, va="center", fontsize=11)
-    ax.text(0, 0.02, "モータ（2 個）は中央シャーシの下、\n中央の溝の中に隠れている。\n白い板は区画の中心にいるときの前の壁。",
+    ax.text(0, 0.02, "モータ（2 個）はブリッジの下、\n中央の溝の中に隠れている。\n白い板は区画の中心にいるときの前の壁。",
             transform=ax.transAxes, fontsize=10, va="bottom")
     fig.suptitle("Jansen Mouse 立体図", fontsize=15)
     fig.tight_layout()

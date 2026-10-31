@@ -41,7 +41,7 @@ class BuildParams:
     washer: float = 0.3          # 層間ワッシャ [mm]
     pin_radius: float = 2.0      # ピン + 逃げ [mm]
     clearance: float = 0.6       # 同一層の部品間に最低限ほしい隙間 [mm]
-    spacer_y: float = 25.0       # フレーム板どうしをつなぐスペーサの高さ（クランク中心基準）[mm]
+    spacer_y: float = 21.0       # タイロッドの高さ（クランク中心基準）[mm]。脚の最高点（縮尺 0.40 で 17 mm）+ 余裕
     spacer_radius: float = 2.5   # M2 スペーサ + 逃げ [mm]
     samples: int = 72            # 1 回転あたりの姿勢サンプル数
 
