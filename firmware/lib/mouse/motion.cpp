@@ -8,7 +8,10 @@ namespace mouse {
 
 namespace {
 constexpr float kDegToRad = 3.14159265f / 180.0f;
-constexpr int kAlignTicks = 400;    // 前壁補正の実行時間 [tick]
+constexpr int kAlignTimeoutTicks = 1500;  // 前壁補正の打ち切り [tick]
+constexpr int kAlignSettledTicks = 50;    // この間ずっと収まっていたら前壁補正を終える [tick]
+constexpr float kAlignDoneDeg = 0.3f;     // 前壁補正の完了とみなす傾き [deg]
+constexpr float kAlignDoneMm = 0.5f;      // 前壁補正の完了とみなす距離誤差 [mm]
 constexpr int kTurnTimeoutTicks = 500;  // 旋回の目標角に収束するまでの猶予 [tick]
 constexpr float kTurnDoneDeg = 0.5f;    // 旋回完了とみなす角度誤差 [deg]
 constexpr float kTurnDoneRateDps = 5.0f;  // 旋回完了とみなす角速度 [deg/s]
@@ -22,6 +25,10 @@ constexpr float kEdgeOffRatio = 0.7f;
 constexpr float kEdgeMaxCorrectionMm = 25.0f;  // これ以上ずれた壁切れは別の柱とみなして無視
 // 中央寄せに使うのは、この距離以上続けて見えている横壁だけ（柱 12 mm の一瞬の反射を壁と誤らない）
 constexpr float kWallMinRunMm = 25.0f;
+// 中央寄せに使う横ずれの上限と、使うセンサ値の下限（区画中央の値に対する比）。
+// 壁の終わりでは値が急に下がり、距離に換算すると大きな横ずれになって急に曲がってしまうため
+constexpr float kCenterOffsetLimitMm = 10.0f;
+constexpr float kCenterMinRatio = 0.3f;
 // 横壁が切れる位置: 区画中心から (半区画 + 柱の半分) 先が柱の向こう端。
 // センサはクランク軸より前にあるので、そのとき機体中心は区画中心からこの距離だけ進んでいる。
 constexpr float kWallEdgeMm = cfg::kCellMm / 2 + cfg::kPostHalfMm - cfg::kSideSensorForwardMm;
@@ -60,6 +67,8 @@ void Motion::straight(float mm, float v_max, bool wall_centering) {
   io_.unlock();
 }
 
+float Motion::straightProgressMm() const { return distanceMm() - straight_start_mm_; }
+
 void Motion::turn(float deg) {
   io_.lock();
   profile_.start(deg, cfg::kTurnRate, cfg::kTurnAccel);
@@ -73,7 +82,8 @@ void Motion::turn(float deg) {
 
 void Motion::alignFront() {
   io_.lock();
-  settle_ticks_ = kAlignTicks;
+  settle_ticks_ = kAlignTimeoutTicks;
+  align_settled_ = 0;
   mode_ = Mode::kAlign;
   io_.unlock();
 }
@@ -163,11 +173,15 @@ void Motion::tick() {
       float w_cmd = cfg::kHeadingKp * (heading_ref_ + wall_trim_ - yaw_);
       if (wall_centering_) {
         const float traveled = distanceMm() - straight_start_mm_;
-        const bool wl = wall_seen_l_ && traveled - seen_since_l_ > kWallMinRunMm;
-        const bool wr = wall_seen_r_ && traveled - seen_since_r_ > kWallMinRunMm;
+        const bool wl = wall_seen_l_ && traveled - seen_since_l_ > kWallMinRunMm &&
+                        sens_l_ > kCenterMinRatio * tuning_.side_ref_l;
+        const bool wr = wall_seen_r_ && traveled - seen_since_r_ > kWallMinRunMm &&
+                        sens_r_ > kCenterMinRatio * tuning_.side_ref_r;
         // 区画中央からの横ずれ [mm]（正: 左壁に近い）
-        const float off_l = cfg::kSideWallDistMm - wallDistance(sens_l_, tuning_.side_ref_l, cfg::kSideWallDistMm);
-        const float off_r = cfg::kSideWallDistMm - wallDistance(sens_r_, tuning_.side_ref_r, cfg::kSideWallDistMm);
+        const float off_l = clamp(cfg::kSideWallDistMm - wallDistance(sens_l_, tuning_.side_ref_l, cfg::kSideWallDistMm),
+                                  -kCenterOffsetLimitMm, kCenterOffsetLimitMm);
+        const float off_r = clamp(cfg::kSideWallDistMm - wallDistance(sens_r_, tuning_.side_ref_r, cfg::kSideWallDistMm),
+                                  -kCenterOffsetLimitMm, kCenterOffsetLimitMm);
         float err = 0.0f;
         if (wl && wr) err = 0.5f * (off_l - off_r);
         else if (wl) err = off_l;
@@ -218,7 +232,12 @@ void Motion::tick() {
       const float ang_err = atan2f(d_fr - d_fl, cfg::kFrontSensorSpanMm) / kDegToRad;  // 正: 反時計回りに回す
       drive(clamp(cfg::kAlignDistKp * dist_err, -30.0f, 30.0f),
             clamp(cfg::kAlignAngleKp * ang_err, -60.0f, 60.0f));
-      if (--settle_ticks_ <= 0) {
+      // 傾きと距離が目標に収まった状態が続いたら終える。収まらないまま基準を取り直すと、
+      // 残った傾きがそのままジャイロの誤差になるため（時間で打ち切ると約 25 % 残っていた）
+      const bool settled = ang_err < kAlignDoneDeg && ang_err > -kAlignDoneDeg &&
+                           dist_err < kAlignDoneMm && dist_err > -kAlignDoneMm;
+      align_settled_ = settled ? align_settled_ + 1 : 0;
+      if (align_settled_ >= kAlignSettledTicks || --settle_ticks_ <= 0) {
         // 前壁と直角になった = 迷路に対して理想の向き。ジャイロの累積誤差をここで消す。
         yaw_ = heading_ref_;
         wall_trim_ = 0.0f;

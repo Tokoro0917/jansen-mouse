@@ -11,7 +11,7 @@ namespace cfg {
 constexpr float kCellMm = 180.0f;
 constexpr float kPostHalfMm = 6.0f;           // 柱（12 mm 角）の半分
 // 左右の壁センサの取り付け位置: クランク軸（機体中心）から前方への距離 [mm]。
-// 外側のフレーム板の外面に真横（90°）向きに付ける（脚の掃引域を避けた配置。mechanism/jansen/body.py）。
+// センサ基板の前端（脚より前。センサの高さでは脚は前後 44 mm までしか来ない）で真横（90°）向き（mechanism/jansen/body.py）。
 // 斜め前向きだと隣の区画の柱を壁と誤検知する（test/test_sim で確認）。
 constexpr float kSideSensorForwardMm = mech::kSideSensorForwardMm;
 // 区画中央にいるときの、各センサから壁面までの距離 [mm]（壁面は区画中心から 84 mm）
@@ -54,7 +54,7 @@ constexpr float kWallCenterKp = 1.0f;
 constexpr float kWallTrimGain = 0.2f;
 // 前壁補正 (距離誤差 mm -> 速度 mm/s, 傾き deg -> 角速度 deg/s)
 constexpr float kAlignDistKp = 3.0f;
-constexpr float kAlignAngleKp = 4.0f;
+constexpr float kAlignAngleKp = 8.0f;
 // 旋回時の角速度追従 (誤差 deg/s -> 角速度補正 deg/s)
 constexpr float kYawRateKp = 1.5f;
 // 旋回時の角度追従 (誤差 deg -> 角速度補正 deg/s)。足の横滑りで実効が落ちるので直進より強くする

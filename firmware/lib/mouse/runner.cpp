@@ -27,10 +27,42 @@ void Runner::doTurn(maze::Move mv) {
 }
 
 // 区画中心で停止 → 壁を見る → 旋回 → 1 区画前進 を繰り返す（歩行機構向けの確実な方式）
+namespace {
+// 横壁は、左右センサが次の区画の中心を通る瞬間（機体中心が区画中心の kSideSensorForwardMm 手前）に読む。
+// 左右センサは機体中心より前にあるので、区画中心で止まってから読むと、前後に行き過ぎたときに
+// 次の区画の壁を見てしまう（余裕 84 - 60 = 24 mm）。通過時に読めば、前後の誤差に ±78 mm まで耐える。
+constexpr int kSideSampleTicks = 10;  // この tick 数の平均をとる（約 1 mm の区間）
+}  // namespace
+
+// 1 区画前進し、途中で次の区画の横壁を読む。読めたら true。
+bool Runner::forwardOneCell(bool* left, bool* right) {
+  motion_.straight(cfg::kCellMm, cfg::kSearchSpeed, true);
+  long sum_l = 0, sum_r = 0;
+  int n = 0;
+  while (motion_.busy()) {
+    if (n < kSideSampleTicks && motion_.straightProgressMm() >= cfg::kCellMm - cfg::kSideSensorForwardMm) {
+      const WallReading w = io_.wallSensors();
+      sum_l += w.l;
+      sum_r += w.r;
+      ++n;
+    }
+    io_.delayMs(1);
+  }
+  if (n == 0) return false;
+  *left = sum_l / n > tuning_.thr_side;
+  *right = sum_r / n > tuning_.thr_side;
+  return true;
+}
+
 RunResult Runner::explore(maze::Explorer* ex) {
+  bool have_side = false, side_l = false, side_r = false;
   while (true) {
     io_.delayMs(150);  // 歩行振動が収まりセンサ値が落ち着くまで待つ
-    const maze::WallObservation seen = senseWalls();
+    maze::WallObservation seen = senseWalls();
+    if (have_side) {  // 前進の途中で読んだ横壁を使う
+      seen.left = side_l;
+      seen.right = side_r;
+    }
     if (on_cell) on_cell(ex->position(), ex->heading(), seen, io_.wallSensors());
     const maze::Move mv = ex->step(seen);
     if (mv == maze::Move::kArrived) return RunResult::kOk;
@@ -41,8 +73,7 @@ RunResult Runner::explore(maze::Explorer* ex) {
     }
     doTurn(mv);
     ex->applyTurn(mv);
-    motion_.straight(cfg::kCellMm, cfg::kSearchSpeed, true);
-    motion_.wait();
+    have_side = forwardOneCell(&side_l, &side_r);
     ex->applyForward();
     if (io_.batteryVolts() < cfg::kBatteryCutoffV) return RunResult::kLowBattery;
   }

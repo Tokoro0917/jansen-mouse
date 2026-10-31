@@ -46,14 +46,14 @@ class SimRobot : public mouse::MouseIO {
   // 機体外形（脚の掃引範囲）とセンサ配置 [mm]（前 = +f, 左 = +l）
   static constexpr float kHalfLength = mech::kBodyLengthMm / 2;
   static constexpr float kHalfWidth = mech::kBodyWidthMm / 2;
-  // r0: センサの感度（ADC = 4000 x (r0 / 距離)^2）。実機では LED の電流で、区画中央で飽和しないように合わせる
+  // r0: センサの感度（ADC = 4000 x (r0 / 距離)^2）。実機では LED の電流・アンプの帰還抵抗で、区画中央で飽和しないように合わせる
   struct Sensor {
     float f, l, angle_deg, r0;
   };
   static constexpr Sensor kSensors[4] = {
       {mech::kFrontSensorForwardMm, mech::kFrontSensorLateralMm, 0, 30},     // FL
-      {cfg::kSideSensorForwardMm, mech::kSideSensorLateralMm, SIDE_ANGLE, 18},    // L
-      {cfg::kSideSensorForwardMm, -mech::kSideSensorLateralMm, -SIDE_ANGLE, 18},  // R
+      {cfg::kSideSensorForwardMm, mech::kSideSensorLateralMm, SIDE_ANGLE, 30},    // L
+      {cfg::kSideSensorForwardMm, -mech::kSideSensorLateralMm, -SIDE_ANGLE, 30},  // R
       {mech::kFrontSensorForwardMm, -mech::kFrontSensorLateralMm, 0, 30},    // FR
   };
 
@@ -78,13 +78,13 @@ class SimRobot : public mouse::MouseIO {
   int32_t encoderLeft() const override { return counts(phi_l_); }
   int32_t encoderRight() const override { return counts(phi_r_); }
   void wallSensorsSample() override {
-    // 実機と同じく前方 / 側方を交互に更新
+    // 実機と同じく対角の 2 個ずつ（FL・R / L・FR）交互に更新
     if (sample_front_) {
       reading_.fl = sense(0);
-      reading_.fr = sense(3);
+      reading_.r = sense(2);
     } else {
       reading_.l = sense(1);
-      reading_.r = sense(2);
+      reading_.fr = sense(3);
     }
     sample_front_ = !sample_front_;
   }

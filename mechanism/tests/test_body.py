@@ -1,6 +1,6 @@
 import pytest
 
-from jansen.body import default_design, evaluate
+from jansen.body import Sensor, default_design, evaluate, leg_obstacles, sensor_blockers
 from jansen.cli import BUILD, CENTER_WIDTH, DEFAULT_SCALE, DEFAULT_THROWS, MASS_KG, build_header
 
 
@@ -20,6 +20,14 @@ def test_wall_sensors_have_clear_line_of_sight(report):
 def test_previous_sensor_layout_is_blocked_by_legs(report):
     # 以前の配置は脚の掃引域を通っていた（この設計変更の理由）
     assert all(report.legacy_blockers.values())
+
+
+def test_cone_check_catches_a_side_sensor_too_close_to_the_legs():
+    d = default_design(DEFAULT_SCALE, DEFAULT_THROWS, CENTER_WIDTH, BUILD)
+    obs, _ = leg_obstacles(DEFAULT_SCALE, DEFAULT_THROWS, CENTER_WIDTH, BUILD)
+    # 光の中心線は脚の前を通るが、円すい（±10°）は脚に当たる位置
+    near = Sensor("L(脚の近く)", (47.0, 13.0, 39.6), 90.0, "")
+    assert sensor_blockers(d, obs, [near])["L(脚の近く)"]
 
 
 def test_robot_can_spin_between_walls(report):

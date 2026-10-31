@@ -21,6 +21,13 @@ from .linkage import JansenLeg, gait_metrics
 WALL_HALF_GAP = 84.0     # 区画中心から壁面まで（180/2 - 6）[mm]
 WALL_HEIGHT = 50.0       # 迷路の壁の高さ [mm]
 FR4_DENSITY = 1.85e-3    # [g/mm^3]
+BEAM_HALF_ANGLE = 10.0   # 壁センサの光の広がり（円すいの半角）[deg]。KOGUMA Mk4 と同じく円すいで遮りを調べる
+
+# 壁センサのホルダ（KOGUMA Mk4 / ToraNeko.Mk3 と同じ形。黒い樹脂で発光の光が受光に直接入らないようにする）
+# 基板の裏（下）にさかさまに付け、発光 OPV332 を基板から遠い穴、受光 SFH 229 FA を近い穴に入れる。
+HOLDER_W, HOLDER_D, HOLDER_H = 6.0, 4.04, 9.9    # 幅（光と直角）、奥行き（光の向き）、高さ [mm]
+HOLDER_EMITTER_DEPTH = 7.6                       # 基板の下面から発光の穴の中心まで [mm]
+HOLDER_RECEIVER_DEPTH = 3.2                      # 基板の下面から受光の穴の中心まで [mm]
 STEEL_DENSITY = 7.85e-3
 
 
@@ -126,25 +133,59 @@ def default_design(scale: float, throws: int, center_width: float, bp: BuildPara
         Component("driver", (28, 38), (-28, -16), (deck_z + 1, deck_z + 3), 1.0, "Maroon", "DRV8835 基板"),
         # 中央シャーシ（3D プリント）: 左右の内側フレーム板を M2 ネジでつなぎ、モータを上から押さえ、
         # 上面にメイン基板、前方の腕に前壁センサ基板を付ける。重量は外形の 25 % が樹脂（肉抜き）として見積もる。
+        # 中央シャーシ（3D プリント）: 左右の内側フレーム板をタイロッドでつなぎ、モータを上から押さえ、
+        # 上面にメイン基板を付ける。前方へ脚の前まで伸ばし、その下にセンサ基板を付ける。
+        # 重量は外形の 25 % が樹脂（肉抜き）として見積もる。
         Component("chassis", (-40, 40), (-(cw - 0.5), cw - 0.5), (h + 7.5, deck_z),
                   80 * (center_width - 1) * (deck_z - h - 7.5) * 0.25 * 1.24e-3, "LightSteelBlue",
                   "中央シャーシ（PLA、肉抜き）"),
-        Component("chassis_arm", (40, 45.5), (-(cw - 0.5), cw - 0.5), (16, deck_z),
-                  5.5 * (center_width - 1) * (deck_z - 16) * 0.3 * 1.24e-3, "LightSteelBlue",
-                  "シャーシの前腕（前壁センサ基板の取付面）"),
-        # 前壁センサ: 中央の溝の前端に縦向きの基板。光は溝の中を前へ通る。
-        Component("front_board", (46, 48), (-cw + 1, cw - 1), (18, 44), 2.5, "Teal", "前壁センサ基板（シャーシの前腕に固定）"),
-        # 左右センサ: 最も外側のフレーム板の外面に貼る。光を遮るものがない。
-        Component("side_board_L", (2, 18), (outer, outer + 3.5), (32, 44), 1.5, "Teal", "左壁センサ基板"),
-        Component("side_board_R", (2, 18), (-outer - 3.5, -outer), (32, 44), 1.5, "Teal", "右壁センサ基板"),
+        Component("chassis_front", (40, SENSOR_BOARD_X1), (-(cw - 0.5), cw - 0.5), (SENSOR_BOARD_Z + 1.0, deck_z),
+                  (SENSOR_BOARD_X1 - 40) * (center_width - 1) * (deck_z - SENSOR_BOARD_Z - 1) * 0.25 * 1.24e-3,
+                  "LightSteelBlue", "シャーシの前部（下面にセンサ基板を付ける）"),
+        # 壁センサ基板（KOGUMA Mk4 と同じく 4 本を 1 枚に）: 水平に置き、ホルダを裏に下げる
+        Component("sensor_board", (40, SENSOR_BOARD_X1), (-(cw - 0.5), cw - 0.5), (SENSOR_BOARD_Z, SENSOR_BOARD_Z + 0.8),
+                  (SENSOR_BOARD_X1 - 40) * (center_width - 1) * 0.8 * FR4_DENSITY + 1.0, "Teal",
+                  "壁センサ基板 t0.8（発光の定電流ドライバ・受光アンプを含む）"),
     ]
-    d.sensors = [
-        Sensor("FL", (48.5, 7.0, 30.0), 0.0, "front_board"),
-        Sensor("FR", (48.5, -7.0, 30.0), 0.0, "front_board"),
-        Sensor("L", (10.0, outer + 3.5, 38.0), 90.0, "side_board_L"),
-        Sensor("R", (10.0, -outer - 3.5, 38.0), -90.0, "side_board_R"),
-    ]
+    for name, (x, y), a in SENSOR_LAYOUT:
+        d.components.append(holder_component(name, x, y, a))
+    d.sensors = [Sensor(name, (x, y, beam_z()), a, f"holder_{name}") for name, (x, y), a in SENSOR_LAYOUT]
     return d
+
+
+# 壁センサの配置（ホルダの前の面の真ん中、光の向き [deg]: 前 = 0, 左 = +90）
+# - FL / FR: 中央の溝の中で真正面。前の壁まで 34 mm。左右の差で前の壁に対する傾きを見る
+# - L / R: 脚より前（x 60）で真横。脚はセンサの高さでは |x| 44 mm までしか来ないので、光の円すいが脚に当たらない
+# KOGUMA Mk4 は前を外へ 7°、横を交差させて前の柱を見るが、本機は区画中心で止まってその区画の壁を見るので、
+# 前は平行（傾きの検出のため）、横は真横（その区画の横壁、柱から 24 mm 離れた所を見る）にした。
+SENSOR_BOARD_X1 = 64.0   # センサ基板・シャーシ前部の前端 [mm]
+SENSOR_BOARD_Z = 45.0    # センサ基板の下面の高さ [mm]
+SENSOR_LAYOUT = [
+    ("FL", (50.0, 5.0), 0.0),
+    ("FR", (50.0, -5.0), 0.0),
+    ("L", (60.0, 13.0), 90.0),
+    ("R", (60.0, -13.0), -90.0),
+]
+
+
+def beam_z() -> float:
+    """光の高さ: 発光と受光の穴の中間。"""
+    return SENSOR_BOARD_Z - (HOLDER_EMITTER_DEPTH + HOLDER_RECEIVER_DEPTH) / 2
+
+
+def holder_component(name: str, x: float, y: float, a_deg: float) -> Component:
+    """ホルダの外形（前の面の真ん中 (x, y)、光の向き a）を直方体で表す。向きは 0 / ±90° のみ。"""
+    hw, d = HOLDER_W / 2, HOLDER_D
+    if abs(a_deg) < 1e-6:
+        xs, ys = (x - d, x), (y - hw, y + hw)
+    elif abs(a_deg - 90) < 1e-6:
+        xs, ys = (x - hw, x + hw), (y - d, y)
+    elif abs(a_deg + 90) < 1e-6:
+        xs, ys = (x - hw, x + hw), (y, y + d)
+    else:
+        raise ValueError("ホルダの向きは 0 / ±90° のみ")
+    return Component(f"holder_{name}", xs, ys, (SENSOR_BOARD_Z - HOLDER_H, SENSOR_BOARD_Z), 0.22, "Black",
+                     "壁センサのホルダ（黒い樹脂）+ OPV332 + SFH 229 FA")
 
 
 def legacy_sensors() -> list[Sensor]:
@@ -190,29 +231,35 @@ def sensor_ray(s: Sensor) -> tuple[tuple[float, float], tuple[float, float]]:
 
 
 def sensor_blockers(d: BodyDesign, obs: list[Obstacle], sensors: list[Sensor] | None = None,
-                    beam_half_width: float = 2.0) -> dict[str, list[str]]:
-    """各センサの光路（幅 2 x beam_half_width の帯）を遮るもの。"""
+                    half_angle_deg: float = BEAM_HALF_ANGLE) -> dict[str, list[str]]:
+    """各センサの光（半角 half_angle_deg の円すい）を遮るもの。円すいの中心・上下・左右の 5 本の線で調べる。"""
     out = {}
+    t_half = math.tan(math.radians(half_angle_deg))
     for s in sensors if sensors is not None else d.sensors:
         (x0, y0), (x1, y1) = sensor_ray(s)
-        z = s.origin[2]
+        length = math.hypot(x1 - x0, y1 - y0)
+        ux, uy = (x1 - x0) / length, (y1 - y0) / length
+        nx, ny = -uy, ux  # 水平で光と直角
+        z0 = s.origin[2]
         blockers = []
-        n = 200
-        for i in range(n + 1):
-            t = i / n
-            px, py = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
-            for o in obs:
-                if o.y0 - beam_half_width <= py <= o.y1 + beam_half_width and o.name not in blockers:
-                    if o.poly.distance(Point(px, z)) < beam_half_width:
+        n = 120
+        for i in range(1, n + 1):
+            dist = length * i / n
+            spread = 1.0 + dist * t_half  # 発光部の大きさ（φ3）+ 広がり
+            for off_h, off_v in ((0, 0), (spread, 0), (-spread, 0), (0, spread), (0, -spread)):
+                px = x0 + ux * dist + nx * off_h
+                py = y0 + uy * dist + ny * off_h
+                pz = z0 + off_v
+                for o in obs:
+                    if o.name not in blockers and o.y0 <= py <= o.y1 and o.poly.contains(Point(px, pz)):
                         blockers.append(o.name)
-            for c in d.components:
-                if c.name == s.board or c.name in blockers:
-                    continue
-                if (c.x[0] - beam_half_width <= px <= c.x[1] + beam_half_width and
-                        c.y[0] - beam_half_width <= py <= c.y[1] + beam_half_width and c.z[0] <= z <= c.z[1]):
-                    blockers.append(c.name)
-        if z > WALL_HEIGHT - 5:
-            blockers.append(f"高さ {z:.0f} mm が壁（{WALL_HEIGHT:.0f} mm）に近すぎる")
+                for c in d.components:
+                    if c.name == s.board or c.name in blockers:
+                        continue
+                    if c.x[0] <= px <= c.x[1] and c.y[0] <= py <= c.y[1] and c.z[0] <= pz <= c.z[1]:
+                        blockers.append(c.name)
+        if z0 > WALL_HEIGHT - 5:
+            blockers.append(f"高さ {z0:.0f} mm が壁（{WALL_HEIGHT:.0f} mm）に近すぎる")
         out[s.name] = blockers
     return out
 

@@ -21,6 +21,7 @@ class Motion {
 
   // 以下はメインループから呼ぶ非ブロッキング指令
   void straight(float mm, float v_max, bool wall_centering);
+  float straightProgressMm() const;  // 今の直進で進んだ距離（壁切れ補正込み）
   void turn(float deg);  // 反時計回り（左）が正
   void alignFront();     // 前壁を使って距離と向きを補正
   void stop();
@@ -58,6 +59,7 @@ class Motion {
   float seen_since_l_ = 0.0f, seen_since_r_ = 0.0f;  // 横壁が見え始めた走行距離
   int edge_corrections_ = 0;
   int settle_ticks_ = 0;
+  int align_settled_ = 0;  // 前壁補正で目標に収まっている tick 数
 };
 
 }  // namespace mouse
