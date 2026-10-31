@@ -6,7 +6,7 @@
 include <links_generated.scad>
 
 PART = "layout";   // layout | bar | tri_upper | tri_foot | web | web_motor | frame | coupler
-                   // | bridge | motor_clamp | sensor_holder | deck_outline | sensor_board_outline | none
+                   // | motor_clamp | rod_post | sensor_holder | board_outline | none
 
 T = PLATE;         // 板厚 [mm]
 W = LINK_W;        // リンク幅 [mm]
@@ -75,62 +75,42 @@ module frame() {
 // ================================================================ 機体
 // 以下は機体座標（x 前, y 左, z 上。床が z = 0、クランク軸が x = 0, z = CRANK_H）で描く。
 //
-// 構造: 2 本の M2 全ねじ（タイロッド）が、左右すべてのフレーム板・スペーサ・ブリッジを
+// 構造: 2 本の M2 全ねじ（タイロッド）が、左右すべてのフレーム板・スペーサ（中央の溝ではスリーブ）を
 // (x = ±L_a, z = CRANK_H + SPACER_Y) で横に貫き、最も外側のフレーム板の外からナットで締める。
 TIE_Z = CRANK_H + SPACER_Y;
-DECK_HOLES = [[-L_a, -8], [-L_a, 8], [L_a, -8], [L_a, 8]];  // メイン基板 ↔ ブリッジのリブ (x, y)
-CLAMP_X = [MOTOR_X[0] - 4, MOTOR_X[1] + 4];             // モータ押さえのネジ位置 (x)。モータの前後の端の外
-SENSOR_BOARD_HOLES = SENSOR_STANDOFFS;                  // 壁センサ基板 ↔ メイン基板の舌（スペーサ）
 WALL = 2.0;
-TOP_T = 2.5;   // ブリッジの天板の厚さ
-RIB_T = 5.0;   // タイロッドの所のリブの厚さ
+POST_D = 6.0;   // 柱の太さ
 
-// ブリッジ（3D プリント）: 左右の内側フレーム板をタイロッドでつなぎ、モータを上から押さえ、
-// 上面にメイン基板をネジ止めする。天板・タイロッドの所のリブ 2 枚・モータ押さえのボス 2 本だけの形。
-module bridge() {
-  len = BRIDGE_X[1] - BRIDGE_X[0];
-  wid = BRIDGE_Y[1] - BRIDGE_Y[0];
-  hgt = BRIDGE_Z[1] - BRIDGE_Z[0];
-  difference() {
-    union() {
-      translate([BRIDGE_X[0], BRIDGE_Y[0], BRIDGE_Z[1] - TOP_T]) cube([len, wid, TOP_T]);
-      for (sx = [-1, 1]) translate([sx * L_a - RIB_T / 2, BRIDGE_Y[0], BRIDGE_Z[0]]) cube([RIB_T, wid, hgt]);
-      for (x = CLAMP_X) translate([x, 0, BRIDGE_Z[0]]) cylinder(d = 6, h = hgt);
-    }
-    for (sx = [-1, 1]) translate([sx * L_a, BRIDGE_Y[0] - 1, TIE_Z]) rotate([-90, 0, 0]) cylinder(d = SPACER_HOLE, h = wid + 2);
-    for (p = DECK_HOLES) translate([p[0], p[1], BRIDGE_Z[1] - 8]) cylinder(d = 1.8, h = 9);  // M2 タップ下穴
-    for (x = CLAMP_X) translate([x, 0, BRIDGE_Z[0] - 1]) cylinder(d = 1.8, h = hgt + 2);
-  }
-}
+// 基板は 1 枚（KOGUMA Mk4 と同じく壁センサも同じ基板）。壁の高さ 50 mm より下に壁センサの光を出すため、
+// 脚が入らない中央の溝の中、モータのすぐ上に置く。モータは基板とモータ押さえで上下から挟む。
+// 基板はタイロッドの柱 2 本でタイロッドに留める。
 
-// モータ押さえ（3D プリント）: 2 個のモータを下から支え、両端の柱をブリッジのボスにネジ止めする
+// モータ押さえ（3D プリント）: 2 個のモータを下から支え、前後の柱を基板にネジ止めする
 module motor_clamp() {
-  wid = BRIDGE_Y[1] - BRIDGE_Y[0];
+  wid = BOARD_Y[1] - BOARD_Y[0];
   difference() {
     union() {
-      translate([CLAMP_X[0] - 3, BRIDGE_Y[0], MOTOR_Z[0] - WALL]) cube([CLAMP_X[1] - CLAMP_X[0] + 6, wid, WALL]);
-      for (x = CLAMP_X) translate([x, 0, MOTOR_Z[0] - WALL]) cylinder(d = 6, h = BRIDGE_Z[0] - MOTOR_Z[0] + WALL);
+      translate([CLAMP_POST_X[0] - 3, BOARD_Y[0], CLAMP_Z[0]]) cube([CLAMP_POST_X[1] - CLAMP_POST_X[0] + 6, wid, WALL]);
+      for (x = CLAMP_POST_X) translate([x, 0, CLAMP_Z[0]]) cylinder(d = 5, h = BOARD_Z[0] - CLAMP_Z[0]);
     }
-    for (x = CLAMP_X) translate([x, 0, MOTOR_Z[0] - WALL - 1]) cylinder(d = 2.2, h = 40);
+    for (x = CLAMP_POST_X) translate([x, 0, CLAMP_Z[0] + WALL]) cylinder(d = 1.8, h = 40);  // M2 タップ下穴（基板の上から留める）
   }
 }
 
-// 壁センサ基板を吊るスペーサ（市販の M2 樹脂スペーサ。組立図用）
-module standoffs() {
-  for (p = SENSOR_STANDOFFS) translate([p[0], p[1], SENSOR_BOARD_Z[1]]) cylinder(d = 3.5, h = DECK_Z[0] - SENSOR_BOARD_Z[1], $fn = 6);
-}
-
-// メイン基板の外形（2D。基板 CAD に読み込む DXF 用）: 本体と、壁センサ基板を吊る前の舌
-module deck_outline() {
+// タイロッドの柱（3D プリント）: 基板の上面から立ち、上端の横穴にタイロッド（M2 全ねじ）を通す
+module rod_post() {
+  hgt = TIE_Z - BOARD_Z[1] + 3;
   difference() {
     union() {
-      translate([DECK_X[0], DECK_Y[0]]) square([DECK_X[1] - DECK_X[0], DECK_Y[1] - DECK_Y[0]]);
-      translate([DECK_FRONT_X[0] - 1, DECK_FRONT_Y[0]]) square([DECK_FRONT_X[1] - DECK_FRONT_X[0] + 1, DECK_FRONT_Y[1] - DECK_FRONT_Y[0]]);
+      cylinder(d = POST_D, h = hgt - 3);
+      translate([0, 0, hgt - 3]) rotate([90, 0, 0]) cylinder(d = POST_D, h = POST_D, center = true);
     }
-    holes(DECK_HOLES, d = 2.2);
-    holes(SENSOR_STANDOFFS, d = 2.2);
+    translate([0, 0, hgt - 3]) rotate([90, 0, 0]) cylinder(d = SPACER_HOLE, h = POST_D + 2, center = true);
+    translate([0, 0, -0.1]) cylinder(d = 1.8, h = 6);  // 基板の裏から M2 で留める
   }
 }
+
+module rod_posts() { for (sx = [-1, 1]) translate([sx * L_a, 0, BOARD_Z[1]]) rod_post(); }
 
 // モータ軸（N20: φ3 D カット）→ 六角シャフト 3 mm の継手（web_motor を使えば不要。予備）
 module coupler() {
@@ -157,16 +137,18 @@ module sensor_holder() {
   }
 }
 
-// 4 個のホルダを機体座標に置く（センサ基板の下面 SENSOR_BOARD_Z[0] から下げる）
+// 4 個のホルダを機体座標に置く（基板の下面 BOARD_Z[0] から下げる）
 module placed_holders() {
-  for (s = SENSORS) translate([s[0], s[1], SENSOR_BOARD_Z[0]]) rotate([0, 0, s[2]]) sensor_holder();
+  for (s = SENSORS) translate([s[0], s[1], BOARD_Z[0]]) rotate([0, 0, s[2]]) sensor_holder();
 }
 
-// 壁センサ基板の外形（2D。ホルダのほぞの穴 3.2 x 3.2 と取付穴を含む）
-module sensor_board_outline() {
+// 基板の外形（2D。基板 CAD に読み込む DXF 用）: モータ押さえの柱・タイロッドの柱のネジ穴と、
+// 壁センサのホルダのほぞの穴 3.2 x 3.2 を含む
+module board_outline() {
   difference() {
-    translate([SENSOR_BOARD_X[0], SENSOR_BOARD_Y[0]]) square([SENSOR_BOARD_X[1] - SENSOR_BOARD_X[0], SENSOR_BOARD_Y[1] - SENSOR_BOARD_Y[0]]);
-    holes(SENSOR_BOARD_HOLES, d = 2.2);
+    translate([BOARD_X[0], BOARD_Y[0]]) square([BOARD_X[1] - BOARD_X[0], BOARD_Y[1] - BOARD_Y[0]]);
+    for (x = CLAMP_POST_X) translate([x, 0]) circle(d = 2.2);
+    for (sx = [-1, 1]) translate([sx * L_a, 0]) circle(d = 2.2);
     for (s = SENSORS) translate([s[0], s[1]]) rotate(s[2]) translate([-HOLDER[1] + 1.5, 0]) square([3.2, 3.2], center = true);
   }
 }
@@ -178,11 +160,10 @@ if (PART == "web") web();
 if (PART == "web_motor") web(motor = true);
 if (PART == "frame") frame();
 if (PART == "coupler") coupler();
-if (PART == "bridge") bridge();
+if (PART == "rod_post") rod_post();
 if (PART == "motor_clamp") motor_clamp();
 if (PART == "sensor_holder") sensor_holder();
-if (PART == "deck_outline") deck_outline();
-if (PART == "sensor_board_outline") sensor_board_outline();
+if (PART == "board_outline") board_outline();
 if (PART == "layout") {
   // 脚 1 本分の部品一式（j, k, c, f の 4 本のバー + 三角形 2 枚）
   lens = [L_j, L_k, L_c, L_f];

@@ -19,7 +19,6 @@ from pathlib import Path
 
 from .assembly import BuildParams, PART_JOINTS, footprint
 from .body import (HOLDER_D, HOLDER_EMITTER_DEPTH, HOLDER_H, HOLDER_RECEIVER_DEPTH, HOLDER_W, SENSOR_LAYOUT,
-                   SENSOR_STANDOFFS,
                    default_design, evaluate, leg_obstacles, sensor_ray)
 from .drive import crank_torque, drive_profile, spin_turn_torque
 from .gait import standard_side, support_analysis
@@ -273,17 +272,14 @@ def build_scad(scale: float, throws: int) -> str:
 
     body = body + "\n// 機体の部品配置（機体座標: x 前, y 左, z 上。jansen/body.py）\n" + "\n".join([
         f"CRANK_H = {-gait_metrics(leg).ground_y:.2f};",
-        f"BRIDGE_X = {rng('bridge', 'x')}; BRIDGE_Y = {rng('bridge', 'y')}; BRIDGE_Z = {rng('bridge', 'z')};",
-        f"DECK_Z = {rng('deck', 'z')}; DECK_FRONT_X = {rng('deck_front', 'x')}; DECK_FRONT_Y = {rng('deck_front', 'y')};",
-        "SENSOR_STANDOFFS = [" + ", ".join(f"[{x:.2f}, {y:.2f}]" for x, y in SENSOR_STANDOFFS) + "];  // 壁センサ基板を吊るスペーサ (x, y)",
-        f"SENSOR_BOARD_X = {rng('sensor_board', 'x')}; SENSOR_BOARD_Y = {rng('sensor_board', 'y')}; "
-        f"SENSOR_BOARD_Z = {rng('sensor_board', 'z')};",
+        f"BOARD_X = {rng('board', 'x')}; BOARD_Y = {rng('board', 'y')}; BOARD_Z = {rng('board', 'z')};",
+        f"CLAMP_Z = {rng('motor_clamp', 'z')}; CLAMP_POST_X = [{sum(comp['clamp_post_rear'].x) / 2:.2f}, "
+        f"{sum(comp['clamp_post_front'].x) / 2:.2f}];",
         "SENSORS = [" + ", ".join(f"[{x:.2f}, {y:.2f}, {a:.1f}]" for _, (x, y), a in SENSOR_LAYOUT)
         + "];  // FL, FR, L, R: ホルダの前の面の真ん中 (x, y) と光の向き",
         f"HOLDER = [{HOLDER_W}, {HOLDER_D}, {HOLDER_H}, {HOLDER_EMITTER_DEPTH}, {HOLDER_RECEIVER_DEPTH}];"
         "  // 幅, 奥行き, 高さ, 発光の穴, 受光の穴（基板の下面から）",
         f"MOTOR_X = {rng('motor_L', 'x')}; MOTOR_Z = {rng('motor_L', 'z')};",
-        f"DECK_X = {rng('deck', 'x')}; DECK_Y = {rng('deck', 'y')};",
 
     ])
     return ("// 自動生成: python -m jansen.cli scad （手で編集しないこと）\n"
@@ -338,8 +334,6 @@ def build_assembly(scale: float, throws: int, theta_deg: float) -> str:
                 p2 = pts[2] if len(pts) == 3 else None
                 place(pts[0], pts[1], p2, z_of(lay.layers[name]), colors[base_name], calls[base_name])
         out.append(f"color(\"Gray\") translate([0,0,{side * (CENTER_WIDTH / 2 + throws * module_t) - (BUILD.plate if side < 0 else 0):.3f}]) frame();")
-    out.append(f"color(\"Black\", 0.6) translate([-30,-10,{-CENTER_WIDTH / 2 + 1:.1f}]) "
-               f"cube([60, 30, {CENTER_WIDTH - 2:.1f}]);  // 電装部")
     out.append(f"color(\"White\", 0.3) translate([-90, {ground - 1:.2f}, -90]) "
                f"cube([180, 1, 180]);  // 床（1 区画分）")
     out.append("}")
@@ -347,11 +341,12 @@ def build_assembly(scale: float, throws: int, theta_deg: float) -> str:
     d = default_design(scale, throws, CENTER_WIDTH, BUILD)
     h = -ground
     out.append("// 機体の部品（jansen/body.py の default_design）")
-    out.append(f"color(\"LightSteelBlue\") mirror([0, 1, 0]) translate([0, 0, {-h:.2f}]) {{ bridge(); motor_clamp(); standoffs(); }}")
+    out.append(f"color(\"LightSteelBlue\") mirror([0, 1, 0]) translate([0, 0, {-h:.2f}]) {{ motor_clamp(); rod_posts(); }}")
     out.append(f"color(\"Black\") mirror([0, 1, 0]) translate([0, 0, {-h:.2f}]) placed_holders();")
     for c in d.components:
-        if c.name == "bridge" or c.name.startswith("holder_") or c.name.startswith("standoff"):
-            continue  # 実際の形状（bridge()・sensor_holder()・standoffs()）で描く
+        if (c.name.startswith("holder_") or c.name.startswith("rod_post") or c.name.startswith("clamp_post")
+                or c.name == "motor_clamp"):
+            continue  # 実際の形状（motor_clamp()・rod_posts()・sensor_holder()）で描く
         out.append(f"color(\"{c.color}\") translate([{c.x[0]:.2f}, {-c.y[1]:.2f}, {c.z[0] - h:.2f}]) "
                    f"cube([{c.x[1] - c.x[0]:.2f}, {c.y[1] - c.y[0]:.2f}, {c.z[1] - c.z[0]:.2f}]);  // {c.name}")
     for sn in d.sensors:

@@ -95,23 +95,20 @@ color("Orange") translate([15.200,-3.120,48.100]) rotate([0,0,113.655]) mirror([
 color("Tomato") translate([-22.046,-17.271,48.100]) rotate([0,0,152.394]) tri_foot();
 color("Tomato") translate([22.046,-17.271,44.500]) rotate([0,0,27.606]) mirror([0,1,0]) tri_foot();
 color("Gray") translate([0,0,55.300]) frame();
-color("Black", 0.6) translate([-30,-10,-12.0]) cube([60, 30, 24.0]);  // 電装部
 color("White", 0.3) translate([-90, -37.73, -90]) cube([180, 1, 180]);  // 床（1 区画分）
 }
 // 機体の部品（jansen/body.py の default_design）
-color("LightSteelBlue") mirror([0, 1, 0]) translate([0, 0, -36.73]) { bridge(); motor_clamp(); standoffs(); }
+color("LightSteelBlue") mirror([0, 1, 0]) translate([0, 0, -36.73]) { motor_clamp(); rod_posts(); }
 color("Black") mirror([0, 1, 0]) translate([0, 0, -36.73]) placed_holders();
 color("Silver") translate([-34.00, -12.50, -7.00]) cube([41.00, 12.00, 14.00]);  // motor_L
 color("Silver") translate([-34.00, 0.50, -7.00]) cube([41.00, 12.00, 14.00]);  // motor_R
-color("DarkGreen") translate([-40.00, -30.00, 27.50]) cube([80.00, 60.00, 1.00]);  // deck
-color("DarkGreen") translate([40.00, -12.50, 27.50]) cube([24.00, 25.00, 1.00]);  // deck_front
-color("Navy") translate([-26.00, -10.50, 28.50]) cube([53.00, 21.00, 4.00]);  // mcu
-color("Gold") translate([-20.00, -31.00, 28.50]) cube([34.00, 18.00, 12.00]);  // battery
-color("Purple") translate([-6.00, 16.00, 28.50]) cube([12.00, 12.00, 1.00]);  // imu
-color("Maroon") translate([28.00, 16.00, 28.50]) cube([10.00, 12.00, 2.00]);  // driver
-color("Teal") translate([40.00, -12.50, 8.27]) cube([24.00, 25.00, 0.80]);  // sensor_board
-color("Red", 0.6) hull() { translate([50.00, -5.00, 2.87]) sphere(0.8, $fn=8); translate([84.00, -5.00, 2.87]) sphere(0.8, $fn=8); }  // 壁センサ FL の光路
-color("Red", 0.6) hull() { translate([50.00, 5.00, 2.87]) sphere(0.8, $fn=8); translate([84.00, 5.00, 2.87]) sphere(0.8, $fn=8); }  // 壁センサ FR の光路
-color("Red", 0.6) hull() { translate([60.00, -13.00, 2.87]) sphere(0.8, $fn=8); translate([60.00, -84.00, 2.87]) sphere(0.8, $fn=8); }  // 壁センサ L の光路
-color("Red", 0.6) hull() { translate([60.00, 13.00, 2.87]) sphere(0.8, $fn=8); translate([60.00, 84.00, 2.87]) sphere(0.8, $fn=8); }  // 壁センサ R の光路
+color("DarkGreen") translate([-46.00, -12.50, 7.50]) cube([110.00, 25.00, 1.00]);  // board
+color("Navy") translate([-34.00, -8.00, 8.50]) cube([15.00, 16.00, 1.50]);  // mcu
+color("Purple") translate([-5.00, -5.00, 8.50]) cube([10.00, 10.00, 1.00]);  // imu
+color("Maroon") translate([-45.00, -4.00, 8.50]) cube([5.00, 8.00, 1.00]);  // driver
+color("Gold") translate([25.00, -9.00, 8.50]) cube([34.00, 18.00, 12.00]);  // battery
+color("Red", 0.6) hull() { translate([50.00, -5.00, 2.10]) sphere(0.8, $fn=8); translate([84.00, -5.00, 2.10]) sphere(0.8, $fn=8); }  // 壁センサ FL の光路
+color("Red", 0.6) hull() { translate([50.00, 5.00, 2.10]) sphere(0.8, $fn=8); translate([84.00, 5.00, 2.10]) sphere(0.8, $fn=8); }  // 壁センサ FR の光路
+color("Red", 0.6) hull() { translate([60.00, -13.00, 2.10]) sphere(0.8, $fn=8); translate([60.00, -84.00, 2.10]) sphere(0.8, $fn=8); }  // 壁センサ L の光路
+color("Red", 0.6) hull() { translate([60.00, 13.00, 2.10]) sphere(0.8, $fn=8); translate([60.00, 84.00, 2.10]) sphere(0.8, $fn=8); }  // 壁センサ R の光路
 color("White", 0.25) translate([84, -90, -36.73]) cube([12, 180, 50]);  // 前壁（区画中心にいるとき）
