@@ -89,7 +89,8 @@ class JansenLeg:
 
 @dataclass
 class GaitMetrics:
-    stride: float           # 接地区間の水平移動量 [mm]（= クランク1回転あたりの前進量）
+    stance_length: float    # 1 本の足が接地している間の水平移動量 [mm]
+                            # （1 回転あたりの前進量ではない。drive.drive_profile を参照）
     step_height: float      # 足上げ高さ [mm]
     ground_fraction: float  # 接地とみなせる区間のクランク角比率
     flatness: float         # 接地区間の y の最大偏差 [mm]
@@ -109,9 +110,9 @@ def gait_metrics(leg: JansenLeg, n: int = 720, tol_ratio: float = 0.03) -> GaitM
     y_min, y_max = y.min(), y.max()
     step_height = y_max - y_min
     ground = y <= y_min + step_height * tol_ratio
-    stride = x[ground].max() - x[ground].min()
+    stance = x[ground].max() - x[ground].min()
     return GaitMetrics(
-        stride=float(stride),
+        stance_length=float(stance),
         step_height=float(step_height),
         ground_fraction=float(ground.mean()),
         flatness=float(y[ground].max() - y_min),

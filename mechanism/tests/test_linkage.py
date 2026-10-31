@@ -33,16 +33,16 @@ def test_joints_continuous_over_full_rotation():
 
 def test_classic_jansen_gait_shape():
     g = gait_metrics(JansenLeg(scale=1.0))
-    # Holy Numbers の既知の特徴: 平坦な接地区間と、クランク半径の 3 倍以上のストライド
+    # Holy Numbers の既知の特徴: 平坦な接地区間と、クランク半径の 3 倍以上の接地区間
     assert g.flatness < 1.0
-    assert g.stride > 3 * HOLY_NUMBERS["m"]
+    assert g.stance_length > 3 * HOLY_NUMBERS["m"]
     assert g.ground_y == pytest.approx(-91.8, abs=0.5)
 
 
 def test_metrics_scale_linearly():
     g1 = gait_metrics(JansenLeg(scale=1.0))
     g2 = gait_metrics(JansenLeg(scale=0.5))
-    assert g2.stride == pytest.approx(g1.stride * 0.5, rel=1e-6)
+    assert g2.stance_length == pytest.approx(g1.stance_length * 0.5, rel=1e-6)
     assert g2.step_height == pytest.approx(g1.step_height * 0.5, rel=1e-6)
 
 
@@ -55,5 +55,5 @@ def test_default_config_keeps_two_feet_on_ground():
 
 
 def test_cli_outputs():
-    assert "kStrideMmPerRev" in build_header(DEFAULT_SCALE, DEFAULT_THROWS)
+    assert "kTravelMmPerRev" in build_header(DEFAULT_SCALE, DEFAULT_THROWS)
     assert "| m |" in build_report(DEFAULT_SCALE, DEFAULT_THROWS)
