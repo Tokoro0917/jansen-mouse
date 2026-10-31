@@ -41,13 +41,13 @@ constexpr uint32_t kPinBtnStart = PB3;
 // ---------------- 機構 ----------------
 constexpr float kCellMm = 180.0f;
 constexpr float kEncoderCountsPerMotorRev = 28.0f;  // 7 極対 x 4 逓倍
-constexpr float kGearRatio = 100.0f;                // N20 1:100 ギヤードモータ (6V 300rpm 品)
+constexpr float kGearRatio = 100.0f;                // N20 ウォームギヤモータの減速比（購入品に合わせる）
 constexpr float kCountsPerCrankRev = kEncoderCountsPerMotorRev * kGearRatio;
 // 片側の左右モータ取り付け向き補正（前進でカウントが増えるように）
 constexpr int kMotorLSign = 1;
 constexpr int kMotorRSign = -1;
-// 超信地旋回の実効トレッド [mm]（脚の滑りを含めた実測値で調整。旋回はジャイロで閉ループ）
-constexpr float kEffectiveTreadMm = 95.0f;
+// 超信地旋回の実効トレッド [mm]（初期値は左右脚群の中心間距離。旋回はジャイロで閉ループ）
+constexpr float kEffectiveTreadMm = mech::kLegGroupPitchMm;
 // 歩行の実効ストライド補正係数（実測距離 / 理論距離 から調整）
 constexpr float kStrideCorrection = 1.00f;
 constexpr float kMmPerCrankRev = mech::kStrideMmPerRev * kStrideCorrection;
@@ -56,8 +56,8 @@ constexpr float kMmPerCrankRev = mech::kStrideMmPerRev * kStrideCorrection;
 constexpr float kControlHz = 1000.0f;
 constexpr float kDt = 1.0f / kControlHz;
 
-constexpr float kSearchSpeed = 60.0f;    // [mm/s] 探索 (≈2 rev/s)
-constexpr float kFastSpeed = 110.0f;     // [mm/s] 最短走行 (≈3.8 rev/s)
+constexpr float kSearchSpeed = 60.0f;    // [mm/s] 探索 (≈2.5 rev/s)
+constexpr float kFastSpeed = 90.0f;      // [mm/s] 最短走行 (≈3.8 rev/s)
 constexpr float kAccel = 150.0f;         // [mm/s^2]
 constexpr float kTurnRate = 180.0f;      // [deg/s]
 constexpr float kTurnAccel = 540.0f;     // [deg/s^2]

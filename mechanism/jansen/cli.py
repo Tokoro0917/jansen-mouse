@@ -5,6 +5,8 @@
     python -m jansen.cli anim  -o out/          # 動作アニメーション (GIF)
     python -m jansen.cli header -o ../firmware/include/mechanism_params.h
     python -m jansen.cli scad  -o ../cad/links_generated.scad
+    python -m jansen.cli footprint              # 縮尺・スロー数ごとの機体外形の比較
+    python -m jansen.cli assembly -o ../cad/assembly_generated.scad --theta 30
 """
 from __future__ import annotations
 
@@ -12,12 +14,16 @@ import argparse
 import math
 from pathlib import Path
 
+from .assembly import BuildParams, PART_JOINTS, footprint
 from .gait import standard_side, support_analysis
 from .linkage import HOLY_NUMBERS, MOVING_LINKS, JansenLeg, gait_metrics
 
-DEFAULT_SCALE = 0.55   # [mm/unit] クラシックマウス (18cm 区画) 向け
-DEFAULT_THROWS = 3     # 片側のクランクスロー数（脚は 2 倍）
+DEFAULT_SCALE = 0.45   # [mm/unit] 超信地旋回できる外形から決定（docs/design.md 参照）
+DEFAULT_THROWS = 2     # 片側のクランクスロー数（脚は 2 倍）
+CENTER_WIDTH = 26.0    # 中央部（直交出力の N20 ウォームギヤモータ 2 個を並べた幅）[mm]
+CORRIDOR_MM = 168.0    # 区画 180 mm - 壁厚 12 mm
 CELL_MM = 180.0
+BUILD = BuildParams()
 
 # 関節図の線分（描画用）
 SEGMENTS = [("O", "A"), ("A", "C"), ("B", "C"), ("A", "D"), ("B", "D"), ("B", "E"),
@@ -28,6 +34,8 @@ def build_report(scale: float, throws: int) -> str:
     leg = JansenLeg(scale=scale)
     g = gait_metrics(leg)
     sup = support_analysis(leg, standard_side(throws))
+    fp = footprint(scale, throws, CENTER_WIDTH, BUILD)
+    lay = fp.layout
     lines = [
         f"# Jansen leg report (scale = {scale} mm/unit, throws/side = {throws})",
         "",
@@ -40,6 +48,31 @@ def build_report(scale: float, throws: int) -> str:
         f"- 足先の x 範囲: {g.x_min:.1f} 〜 {g.x_max:.1f} mm",
         f"- 片側の最小接地脚数: {sup.min_contacts}",
         f"- 胴体の上下動: {sup.body_bob:.3f} mm",
+        "",
+        "## 機体外形（干渉チェック済みの積層から算出）",
+        f"- 全長（脚の掃引範囲）: {fp.length:.1f} mm",
+        f"- 全幅: {fp.width:.1f} mm（中央部 {CENTER_WIDTH:.0f} mm を含む）",
+        f"- 対角長（超信地旋回の掃引直径）: {fp.diagonal:.1f} mm"
+        f" / 通路幅 {CORRIDOR_MM:.0f} mm（余裕 {CORRIDOR_MM - fp.diagonal:.1f} mm）",
+        f"- 脚モジュール厚: {lay.thickness:.1f} mm"
+        f"（脚 {lay.n_layers} 層 + クランクウェブ 2 枚 + フレーム板 1 枚,"
+        f" 板厚 {BUILD.plate} mm, ワッシャ {BUILD.washer} mm）",
+        "",
+        "## 積層順（1 モジュール = 前脚 + 後脚 ' ）",
+        "",
+        "層 0 と層 N+1 はクランクウェブ（組立クランク軸）。固定ピン B / B' はフレーム板から片持ち。",
+        "",
+        "| 層 | 部品 |",
+        "|---|---|",
+    ]
+    for z in range(1, lay.n_layers + 1):
+        names = sorted(n for n, v in lay.layers.items() if v == z)
+        lines.append(f"| {z} | {', '.join(names)} |")
+    lines += [
+        "",
+        "固定ピンを立てる側: " + ", ".join(
+            f"{j} = {'層 N+1 側' if s == 'high' else '層 0 側'}のフレーム板"
+            for j, s in lay.fixed_pin_side.items()),
         "",
         "## リンク長 [mm]（穴中心間距離）",
         "",
@@ -117,6 +150,7 @@ def cmd_anim(scale: float, out: Path, frames: int = 48) -> None:
 def build_header(scale: float, throws: int) -> str:
     leg = JansenLeg(scale=scale)
     g = gait_metrics(leg)
+    fp = footprint(scale, throws, CENTER_WIDTH, BUILD)
     return f"""// このファイルは mechanism/ の `python -m jansen.cli header` で自動生成される。手で編集しないこと。
 #pragma once
 
@@ -126,22 +160,98 @@ constexpr int kCrankThrowsPerSide = {throws};
 constexpr float kStrideMmPerRev = {g.stride:.4f}f;     // クランク1回転あたりの前進量
 constexpr float kCrankHeightMm = {-g.ground_y:.4f}f;   // クランク中心の対地高さ
 constexpr float kStepHeightMm = {g.step_height:.4f}f;
+constexpr float kBodyLengthMm = {fp.length:.1f}f;
+constexpr float kBodyWidthMm = {fp.width:.1f}f;
+constexpr float kLegGroupPitchMm = {fp.width - throws * fp.layout.thickness - BUILD.plate:.1f}f;  // 左右脚群の中心間距離
 }}  // namespace mech
 """
 
 
-def build_scad(scale: float) -> str:
+def build_scad(scale: float, throws: int) -> str:
     leg = JansenLeg(scale=scale)
+    lay = footprint(scale, throws, CENTER_WIDTH, BUILD).layout
     body = "\n".join(f"L_{n} = {leg.length(n):.3f};" for n in sorted(HOLY_NUMBERS))
+    layers = "\n".join(f"LAYER_{n.replace(chr(39), '_R')} = {z};"
+                        for n, z in sorted(lay.layers.items()))
     return ("// 自動生成: python -m jansen.cli scad （手で編集しないこと）\n"
-            f"SCALE = {scale};\n{body}\n")
+            f"SCALE = {scale};\nTHROWS = {throws};\n"
+            f"PLATE = {BUILD.plate};\nWASHER = {BUILD.washer};\nLINK_W = {BUILD.link_width};\n"
+            f"N_LAYERS = {lay.n_layers};\nCENTER_WIDTH = {CENTER_WIDTH};\nSPACER_Y = {BUILD.spacer_y};\n"
+            f"{body}\n{layers}\n")
+
+
+def build_assembly(scale: float, throws: int, theta_deg: float) -> str:
+    """指定クランク角での全体組立図（OpenSCAD）。parts.scad の部品を配置する。"""
+    import numpy as np
+
+    from .assembly import _module_poses, module_parts
+
+    leg = JansenLeg(scale=scale)
+    lay = footprint(scale, throws, CENTER_WIDTH, BUILD).layout
+    pitch = BUILD.plate + BUILD.washer
+    module_t = lay.thickness
+    ground = gait_metrics(leg).ground_y
+    out = ["// 自動生成: python -m jansen.cli assembly （手で編集しないこと）",
+           "// 脚の平面 = XY（Y 上向き）、クランク軸 = Z。最後に全体を起こして Z 上向きにする。",
+           "include <parts.scad>", "PART = \"none\";", "rotate([90, 0, 0]) {"]
+
+    def place(p0, p1, p2, z, color, call):
+        ang = math.degrees(math.atan2(p1[1] - p0[1], p1[0] - p0[0]))
+        mirror = ""
+        if p2 is not None:
+            cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0])
+            mirror = "mirror([0,1,0]) " if cross < 0 else ""
+        out.append(f"color(\"{color}\") translate([{p0[0]:.3f},{p0[1]:.3f},{z:.3f}]) "
+                   f"rotate([0,0,{ang:.3f}]) {mirror}{call};")
+
+    colors = {"j": "SteelBlue", "k": "SteelBlue", "c": "SeaGreen", "f": "SeaGreen",
+              "U": "Orange", "T": "Tomato"}
+    calls = {"j": "bar(L_j)", "k": "bar(L_k)", "c": "bar(L_c)", "f": "bar(L_f)",
+             "U": "tri_upper()", "T": "tri_foot()"}
+    parts = module_parts()
+    for side in (-1, 1):  # 右 / 左
+        for mod in range(throws):
+            th = math.radians(theta_deg) + 2 * math.pi * mod / throws
+            pose = {k: np.asarray(v) for k, v in _module_poses(leg, th).items()}
+            base = CENTER_WIDTH / 2 + mod * module_t + BUILD.plate  # フレーム板の外側から
+            def z_of(layer):
+                return side * (base + layer * pitch) - (BUILD.plate if side < 0 else 0)
+            out.append(f"color(\"Gray\") translate([0,0,{side * (base - BUILD.plate) - (BUILD.plate if side < 0 else 0):.3f}]) frame();")
+            for wl in (0, lay.n_layers + 1):
+                place(pose["O"], pose["A"], None, z_of(wl), "DimGray", "web()")
+            for name, joints in parts.items():
+                base_name = name.rstrip("'")
+                pts = [pose[j] for j in joints]
+                p2 = pts[2] if len(pts) == 3 else None
+                place(pts[0], pts[1], p2, z_of(lay.layers[name]), colors[base_name], calls[base_name])
+        out.append(f"color(\"Gray\") translate([0,0,{side * (CENTER_WIDTH / 2 + throws * module_t) - (BUILD.plate if side < 0 else 0):.3f}]) frame();")
+    out.append(f"color(\"Black\", 0.6) translate([-30,-10,{-CENTER_WIDTH / 2 + 1:.1f}]) "
+               f"cube([60, 30, {CENTER_WIDTH - 2:.1f}]);  // 電装部")
+    out.append(f"color(\"White\", 0.3) translate([-90, {ground - 1:.2f}, -90]) "
+               f"cube([180, 1, 180]);  // 床（1 区画分）")
+    out.append("}")
+    return "\n".join(out) + "\n"
+
+
+def build_footprint_table(center_width: float) -> str:
+    rows = ["| 片側スロー数 | 縮尺 | 全長 | 全幅 | 対角長 | 旋回余裕 | ストライド |",
+            "|---|---|---|---|---|---|---|"]
+    for throws in (2, 3):
+        for scale in (0.40, 0.45, 0.50, 0.55):
+            fp = footprint(scale, throws, center_width, BUILD)
+            g = gait_metrics(JansenLeg(scale=scale))
+            rows.append(f"| {throws} | {scale:.2f} | {fp.length:.1f} | {fp.width:.1f} | "
+                        f"{fp.diagonal:.1f} | {CORRIDOR_MM - fp.diagonal:+.1f} | {g.stride:.1f} |")
+    return "\n".join(rows) + "\n"
 
 
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="jansen")
-    p.add_argument("command", choices=["report", "plot", "anim", "header", "scad"])
+    p.add_argument("command",
+                   choices=["report", "plot", "anim", "header", "scad", "footprint", "assembly"])
     p.add_argument("--scale", type=float, default=DEFAULT_SCALE)
     p.add_argument("--throws", type=int, default=DEFAULT_THROWS)
+    p.add_argument("--theta", type=float, default=30.0, help="assembly のクランク角 [deg]")
     p.add_argument("-o", "--out", type=Path, default=None)
     args = p.parse_args(argv)
 
@@ -157,8 +267,10 @@ def main(argv=None) -> None:
     elif args.command == "header":
         text = build_header(args.scale, args.throws)
         (args.out.write_text(text, encoding="utf-8") if args.out else print(text, end=""))
-    elif args.command == "scad":
-        text = build_scad(args.scale)
+    elif args.command in ("scad", "footprint", "assembly"):
+        text = {"scad": lambda: build_scad(args.scale, args.throws),
+                "footprint": lambda: build_footprint_table(CENTER_WIDTH),
+                "assembly": lambda: build_assembly(args.scale, args.throws, args.theta)}[args.command]()
         (args.out.write_text(text, encoding="utf-8") if args.out else print(text, end=""))
 
 

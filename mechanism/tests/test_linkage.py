@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from jansen import HOLY_NUMBERS, JansenLeg, gait_metrics, standard_side, support_analysis
-from jansen.cli import build_header, build_report
+from jansen.cli import DEFAULT_SCALE, DEFAULT_THROWS, build_header, build_report
 
 PAIRS = {  # 関節間に張られたリンク
     "m": ("O", "A"), "j": ("A", "C"), "b": ("B", "C"), "k": ("A", "D"), "c": ("B", "D"),
@@ -46,12 +46,14 @@ def test_metrics_scale_linearly():
     assert g2.step_height == pytest.approx(g1.step_height * 0.5, rel=1e-6)
 
 
-def test_three_throws_keep_two_feet_on_ground():
-    rep = support_analysis(JansenLeg(scale=0.55), standard_side(3))
+def test_default_config_keeps_two_feet_on_ground():
+    rep = support_analysis(JansenLeg(scale=DEFAULT_SCALE), standard_side(DEFAULT_THROWS))
     assert rep.min_contacts >= 2
-    assert rep.body_bob < 0.2
+    assert rep.body_bob < 1.0
+    # 3 スローにすると上下動はほぼ消える（外形の制約で不採用）
+    assert support_analysis(JansenLeg(scale=DEFAULT_SCALE), standard_side(3)).body_bob < 0.1
 
 
 def test_cli_outputs():
-    assert "kStrideMmPerRev" in build_header(0.55, 3)
-    assert "| m |" in build_report(0.55, 3)
+    assert "kStrideMmPerRev" in build_header(DEFAULT_SCALE, DEFAULT_THROWS)
+    assert "| m |" in build_report(DEFAULT_SCALE, DEFAULT_THROWS)
