@@ -34,8 +34,13 @@ class Runner {
   static constexpr maze::Pos kStart[1] = {{0, 0}};
 
  private:
-  RunResult explore(maze::Explorer* ex);
+  // stop_when_determined: 最短経路が確定したら、その区画中心で探索をやめる（帰り道用）
+  RunResult explore(maze::Explorer* ex, bool stop_when_determined = false);
+  // 既知の壁だけで targets へ向かう（直線をまとめ、旋回前に前壁補正）。到着時の向きを返す。
+  RunResult followKnownPath(maze::Pos from, maze::Dir heading, const maze::Pos* targets, int n,
+                            float speed, maze::Dir* final_heading);
   void doTurn(maze::Move mv);
+  void faceNorth(maze::Dir heading);
 
   MouseIO& io_;
   Motion& motion_;

@@ -216,6 +216,14 @@ static void runFullMission(uint32_t seed, float travel_scale) {
   TEST_ASSERT_EQUAL_INT(0, rig.robot.cellX());
   TEST_ASSERT_EQUAL_INT(0, rig.robot.cellY());
 
+  // 探索をやめた時点でも、既知の壁だけの最短経路が真の最短経路と同じ長さであること
+  Planner known_planner, truth_planner;
+  known_planner.flood(rig.runner.maze(), mouse::Runner::kGoals, 4, FloodMode::kKnownOnly);
+  truth_planner.flood(truth, mouse::Runner::kGoals, 4, FloodMode::kKnownOnly);
+  printf("  shortest path: known %d / true %d cells\n", (int)known_planner.distance(Pos{0, 0}),
+         (int)truth_planner.distance(Pos{0, 0}));
+  TEST_ASSERT_EQUAL_UINT16(truth_planner.distance(Pos{0, 0}), known_planner.distance(Pos{0, 0}));
+
   const float t0 = rig.robot.timeS();
   const mouse::RunResult f = rig.runner.fastRun();
   printf("  fast run %d, t=%.0fs, at (%d,%d), collisions %d\n", (int)f, rig.robot.timeS() - t0,

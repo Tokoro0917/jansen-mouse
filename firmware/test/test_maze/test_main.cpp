@@ -164,6 +164,27 @@ void test_fast_path_merges_straights() {
   TEST_ASSERT_EQUAL_UINT8(7, steps[2].cells);
 }
 
+void test_shortest_path_determined() {
+  Maze m;
+  // 何も分かっていなければ確定しない
+  TEST_ASSERT_FALSE(shortestPathDetermined(m, Pos{0, 0}, kGoals, 4));
+  // 真の迷路をすべて知っていれば確定する
+  Maze truth;
+  makeTrueMaze(&truth, 7, 20);
+  TEST_ASSERT_TRUE(shortestPathDetermined(truth, Pos{0, 0}, kGoals, 4));
+  // 既知の道が最短の可能性（14 区画）と同じ長さなら、ほかが未知でも確定
+  Maze direct;
+  for (int y = 0; y < 7; ++y) direct.setWall(Pos{0, (int8_t)y}, kNorth, false);
+  for (int x = 0; x < 7; ++x) direct.setWall(Pos{(int8_t)x, 7}, kEast, false);
+  TEST_ASSERT_TRUE(shortestPathDetermined(direct, Pos{0, 0}, kGoals, 4));
+  // 既知の道が遠回り（17 区画）で、未知の部分に近道があり得るなら確定しない
+  Maze detour;
+  for (int y = 0; y < 9; ++y) detour.setWall(Pos{0, (int8_t)y}, kNorth, false);
+  for (int x = 0; x < 7; ++x) detour.setWall(Pos{(int8_t)x, 9}, kEast, false);
+  detour.setWall(Pos{7, 9}, kSouth, false);
+  TEST_ASSERT_FALSE(shortestPathDetermined(detour, Pos{0, 0}, kGoals, 4));
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -174,5 +195,6 @@ int main() {
   RUN_TEST(test_flood_on_empty_maze_is_manhattan);
   RUN_TEST(test_search_reaches_goal_and_returns_on_random_mazes);
   RUN_TEST(test_fast_path_merges_straights);
+  RUN_TEST(test_shortest_path_determined);
   return UNITY_END();
 }

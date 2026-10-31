@@ -49,6 +49,17 @@ void Motion::straight(float mm, float v_max, bool wall_centering) {
   io_.unlock();
 }
 
+void Motion::extendStraight(float mm) {
+  io_.lock();
+  if (mode_ == Mode::kStraight) {
+    profile_.extend(mm);
+    settle_ticks_ = kStraightTimeoutTicks;
+  }
+  io_.unlock();
+}
+
+float Motion::straightProgressMm() const { return distanceMm() - straight_start_mm_; }
+
 void Motion::turn(float deg) {
   io_.lock();
   profile_.start(deg, cfg::kTurnRate, cfg::kTurnAccel);
