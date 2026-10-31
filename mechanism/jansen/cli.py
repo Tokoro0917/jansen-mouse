@@ -15,6 +15,7 @@ import math
 from pathlib import Path
 
 from .assembly import BuildParams, PART_JOINTS, footprint
+from .drive import crank_torque, drive_profile, spin_turn_torque
 from .gait import standard_side, support_analysis
 from .linkage import HOLY_NUMBERS, MOVING_LINKS, JansenLeg, gait_metrics
 
@@ -24,6 +25,14 @@ CENTER_WIDTH = 26.0    # 中央部（直交出力の N20 ウォームギヤモ�
 CORRIDOR_MM = 168.0    # 区画 180 mm - 壁厚 12 mm
 CELL_MM = 180.0
 BUILD = BuildParams()
+# 駆動解析の前提（docs/design.md「駆動とモータ」参照）
+MASS_KG = 0.20
+FOOT_MU = 0.6
+LINK_EFFICIENCY = 0.6
+SEARCH_SPEED = 60.0     # [mm/s]
+FAST_SPEED = 90.0       # [mm/s]
+TURN_RATE_DPS = 180.0   # [deg/s]
+TORQUE_MARGIN = 3.0     # モデルの不確かさを見込んだ安全率
 
 # 関節図の線分（描画用）
 SEGMENTS = [("O", "A"), ("A", "C"), ("B", "C"), ("A", "D"), ("B", "D"), ("B", "E"),
@@ -36,18 +45,39 @@ def build_report(scale: float, throws: int) -> str:
     sup = support_analysis(leg, standard_side(throws))
     fp = footprint(scale, throws, CENTER_WIDTH, BUILD)
     lay = fp.layout
+    pr = drive_profile(leg, standard_side(throws))
+    tread = fp.width - throws * lay.thickness - BUILD.plate
+    t_walk = crank_torque(pr, MASS_KG, mu=FOOT_MU, link_efficiency=LINK_EFFICIENCY)
+    t_turn = spin_turn_torque(pr, MASS_KG, tread, mu=FOOT_MU, link_efficiency=LINK_EFFICIENCY)
+    rpm_fast = FAST_SPEED / pr.travel_per_rev * 60
+    rpm_turn = math.radians(TURN_RATE_DPS) * tread / (2 * pr.body_speed.mean()) / (2 * math.pi) * 60
     lines = [
         f"# Jansen leg report (scale = {scale} mm/unit, throws/side = {throws})",
         "",
         "## 歩容",
-        f"- ストライド（1回転あたり前進量）: {g.stride:.2f} mm",
-        f"- 1区画 ({CELL_MM:.0f} mm) あたりクランク回転数: {CELL_MM / g.stride:.3f} rev",
+        f"- **1 回転あたりの前進量: {pr.travel_per_rev:.2f} mm**",
+        f"- 1 区画 ({CELL_MM:.0f} mm) あたりクランク回転数: {CELL_MM / pr.travel_per_rev:.3f} rev",
+        f"- 1 本の足の接地区間の長さ: {g.stance_length:.2f} mm（1 回転の前進量とは別物）",
+        f"- 胴体速度 / クランク角速度: {pr.body_speed.min():.2f} 〜 {pr.body_speed.max():.2f} mm/rad",
+        f"- 回転角に対する前進量の非線形性: 最大 "
+        f"{abs(pr.travel - pr.thetas / (2 * math.pi) * pr.travel_per_rev).max():.2f} mm",
+        f"- 接地足の前後方向の滑り: 前進量の {pr.slip.mean() / pr.body_speed.mean() * 100:.0f} %",
         f"- 足上げ高さ: {g.step_height:.2f} mm",
         f"- クランク中心の対地高さ: {-g.ground_y:.2f} mm",
         f"- 接地区間の平坦度: {g.flatness:.3f} mm",
         f"- 足先の x 範囲: {g.x_min:.1f} 〜 {g.x_max:.1f} mm",
         f"- 片側の最小接地脚数: {sup.min_contacts}",
         f"- 胴体の上下動: {sup.body_bob:.3f} mm",
+        "",
+        f"## 駆動（機体 {MASS_KG * 1000:.0f} g, 足の摩擦係数 {FOOT_MU}, 関節効率 {LINK_EFFICIENCY}）",
+        f"- 直進時の片側クランクトルク: 最大 {t_walk.peak:.1f} N·mm（実効 {t_walk.rms:.1f}）",
+        f"- 超信地旋回時の片側クランクトルク: 最大 {t_turn.peak:.1f} N·mm（実効 {t_turn.rms:.1f}）",
+        f"- 必要なクランク回転数: 最短走行 {FAST_SPEED:.0f} mm/s で {rpm_fast:.0f} rpm、"
+        f"旋回 {TURN_RATE_DPS:.0f} deg/s で {rpm_turn:.0f} rpm",
+        f"- **モータ（減速後）の要求: {max(rpm_fast, rpm_turn) * 1.2:.0f} rpm 以上で "
+        f"{max(t_walk.peak, t_turn.peak) * TORQUE_MARGIN:.0f} N·mm"
+        f"（{max(t_walk.peak, t_turn.peak) * TORQUE_MARGIN / 98.07:.2f} kgf·cm）以上**"
+        f"（回転数 +20 %、トルク安全率 {TORQUE_MARGIN:.0f}）",
         "",
         "## 機体外形（干渉チェック済みの積層から算出）",
         f"- 全長（脚の掃引範囲）: {fp.length:.1f} mm",
@@ -151,13 +181,15 @@ def build_header(scale: float, throws: int) -> str:
     leg = JansenLeg(scale=scale)
     g = gait_metrics(leg)
     fp = footprint(scale, throws, CENTER_WIDTH, BUILD)
+    pr = drive_profile(leg, standard_side(throws))
     return f"""// このファイルは mechanism/ の `python -m jansen.cli header` で自動生成される。手で編集しないこと。
 #pragma once
 
 namespace mech {{
 constexpr float kLinkScaleMmPerUnit = {scale:.4f}f;
 constexpr int kCrankThrowsPerSide = {throws};
-constexpr float kStrideMmPerRev = {g.stride:.4f}f;     // クランク1回転あたりの前進量
+constexpr float kTravelMmPerRev = {pr.travel_per_rev:.4f}f;  // クランク 1 回転あたりの胴体の前進量
+constexpr float kStanceLengthMm = {g.stance_length:.4f}f;   // 1 本の足の接地区間の長さ（参考値）
 constexpr float kCrankHeightMm = {-g.ground_y:.4f}f;   // クランク中心の対地高さ
 constexpr float kStepHeightMm = {g.step_height:.4f}f;
 constexpr float kBodyLengthMm = {fp.length:.1f}f;
@@ -234,14 +266,14 @@ def build_assembly(scale: float, throws: int, theta_deg: float) -> str:
 
 
 def build_footprint_table(center_width: float) -> str:
-    rows = ["| 片側スロー数 | 縮尺 | 全長 | 全幅 | 対角長 | 旋回余裕 | ストライド |",
+    rows = ["| 片側スロー数 | 縮尺 | 全長 | 全幅 | 対角長 | 旋回余裕 | 1 回転の前進量 |",
             "|---|---|---|---|---|---|---|"]
     for throws in (2, 3):
         for scale in (0.40, 0.45, 0.50, 0.55):
             fp = footprint(scale, throws, center_width, BUILD)
-            g = gait_metrics(JansenLeg(scale=scale))
+            pr = drive_profile(JansenLeg(scale=scale), standard_side(throws), n=360)
             rows.append(f"| {throws} | {scale:.2f} | {fp.length:.1f} | {fp.width:.1f} | "
-                        f"{fp.diagonal:.1f} | {CORRIDOR_MM - fp.diagonal:+.1f} | {g.stride:.1f} |")
+                        f"{fp.diagonal:.1f} | {CORRIDOR_MM - fp.diagonal:+.1f} | {pr.travel_per_rev:.1f} |")
     return "\n".join(rows) + "\n"
 
 

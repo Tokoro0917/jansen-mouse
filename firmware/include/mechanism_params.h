@@ -4,7 +4,8 @@
 namespace mech {
 constexpr float kLinkScaleMmPerUnit = 0.4500f;
 constexpr int kCrankThrowsPerSide = 2;
-constexpr float kStrideMmPerRev = 23.8782f;     // クランク1回転あたりの前進量
+constexpr float kTravelMmPerRev = 56.9674f;  // クランク 1 回転あたりの胴体の前進量
+constexpr float kStanceLengthMm = 23.8782f;   // 1 本の足の接地区間の長さ（参考値）
 constexpr float kCrankHeightMm = 41.3252f;   // クランク中心の対地高さ
 constexpr float kStepHeightMm = 10.1056f;
 constexpr float kBodyLengthMm = 103.4f;

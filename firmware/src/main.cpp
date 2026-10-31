@@ -4,7 +4,7 @@
 //   0: センサ確認（USB シリアルに壁センサ・ジャイロ・エンコーダ値を出力）
 //   1: 探索走行（スタート → ゴール → スタート）
 //   2: 最短走行（探索結果の既知壁のみで経路を作り、直線をまとめて走る）
-//   3: ストライド較正（5 区画直進。実測距離から cfg::kStrideCorrection を求める）
+//   3: 前進量の較正（5 区画直進。実測距離から cfg::kTravelCorrection を求める）
 #include <Arduino.h>
 
 #include "config.h"
@@ -105,13 +105,13 @@ void runFast() {
   hw::beep(3000, 500);
 }
 
-void runStrideCalibration() {
+void runTravelCalibration() {
   const float start = motion.distanceMm();
   motion.straight(cfg::kCellMm * 5, cfg::kSearchSpeed, false);
   motion.wait();
   Serial.printf("odometry: %.1f mm (target %.1f mm)\n", motion.distanceMm() - start,
                 cfg::kCellMm * 5);
-  Serial.println("実測距離 / 900 を cfg::kStrideCorrection に掛けてください");
+  Serial.println("実測距離 / 900 を cfg::kTravelCorrection に掛けてください");
 }
 
 void runSensorMonitor() {
@@ -174,7 +174,7 @@ void loop() {
     case 0: runSensorMonitor(); break;
     case 1: runSearch(); break;
     case 2: runFast(); break;
-    case 3: runStrideCalibration(); break;
+    case 3: runTravelCalibration(); break;
   }
   motion.stop();
 }
