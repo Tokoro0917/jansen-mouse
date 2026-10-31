@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import argparse
 import math
+
+import numpy as np
 from pathlib import Path
 
 from .assembly import BuildParams, PART_JOINTS, footprint
@@ -33,6 +35,7 @@ SEARCH_SPEED = 60.0     # [mm/s]
 FAST_SPEED = 90.0       # [mm/s]
 TURN_RATE_DPS = 180.0   # [deg/s]
 TORQUE_MARGIN = 3.0     # モデルの不確かさを見込んだ安全率
+SPEED_TABLE_N = 64      # ファーム / シミュレーション用の胴体速度表の分割数
 
 # 関節図の線分（描画用）
 SEGMENTS = [("O", "A"), ("A", "C"), ("B", "C"), ("A", "D"), ("B", "D"), ("B", "E"),
@@ -182,6 +185,9 @@ def build_header(scale: float, throws: int) -> str:
     g = gait_metrics(leg)
     fp = footprint(scale, throws, CENTER_WIDTH, BUILD)
     pr = drive_profile(leg, standard_side(throws))
+    idx = np.linspace(0, len(pr.thetas), SPEED_TABLE_N, endpoint=False).astype(int)
+    vals = [f"{v:.3f}f" for v in pr.body_speed[idx]]
+    table = "\n".join("    " + ", ".join(vals[i:i + 8]) + "," for i in range(0, len(vals), 8))
     return f"""// このファイルは mechanism/ の `python -m jansen.cli header` で自動生成される。手で編集しないこと。
 #pragma once
 
@@ -195,6 +201,13 @@ constexpr float kStepHeightMm = {g.step_height:.4f}f;
 constexpr float kBodyLengthMm = {fp.length:.1f}f;
 constexpr float kBodyWidthMm = {fp.width:.1f}f;
 constexpr float kLegGroupPitchMm = {fp.width - throws * fp.layout.thickness - BUILD.plate:.1f}f;  // 左右脚群の中心間距離
+
+// 片側の胴体速度 / クランク角速度 [mm/rad] をクランク 1 回転で {SPEED_TABLE_N} 等分した表
+// （シミュレーション用。クランク角 0 は組立時の基準位相）
+constexpr int kBodySpeedTableSize = {SPEED_TABLE_N};
+constexpr float kBodySpeedTable[kBodySpeedTableSize] = {{
+{table}
+}};
 }}  // namespace mech
 """
 

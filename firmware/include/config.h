@@ -1,4 +1,4 @@
-// ハードウェア構成・調整パラメータ
+// 機構・制御の調整パラメータ（ハードウェア非依存。ピン割り当ては src/pins.h）
 #pragma once
 
 #include <stdint.h>
@@ -7,39 +7,12 @@
 
 namespace cfg {
 
-// ---------------- ピン割り当て (WeAct Black Pill STM32F411CEU6) ----------------
-// モータドライバ DRV8835 (MODE=High: PHASE/ENABLE モード)
-constexpr uint32_t kPinMotorLPwm = PA8;    // AENBL  (TIM1_CH1)
-constexpr uint32_t kPinMotorLDir = PB12;   // APHASE
-constexpr uint32_t kPinMotorRPwm = PA9;    // BENBL  (TIM1_CH2)
-constexpr uint32_t kPinMotorRDir = PB13;   // BPHASE
-
-// モータ軸の磁気エンコーダ (A/B 相)
-constexpr uint32_t kPinEncLA = PB4;
-constexpr uint32_t kPinEncLB = PB5;
-constexpr uint32_t kPinEncRA = PB6;
-constexpr uint32_t kPinEncRB = PB7;
-
-// 壁センサ: 赤外 LED (MOSFET 駆動) とフォトトランジスタ (ADC)
-constexpr uint32_t kPinIrLedFront = PB14;  // 前方 2 個を同時点灯
-constexpr uint32_t kPinIrLedSide = PB15;   // 左右 2 個を同時点灯
-constexpr uint32_t kPinSensFL = PA0;
-constexpr uint32_t kPinSensL = PA1;
-constexpr uint32_t kPinSensR = PA2;
-constexpr uint32_t kPinSensFR = PA3;
-
-// IMU (ICM-20602 / MPU-6500 互換, SPI1)
-constexpr uint32_t kPinImuCs = PA4;        // SCK=PA5, MISO=PA6, MOSI=PA7
-
-// その他
-constexpr uint32_t kPinBattery = PB1;      // 分圧 1/3 (20k + 10k)
-constexpr uint32_t kPinBuzzer = PA15;
-constexpr uint32_t kPinLed = PC13;         // オンボード LED (Low で点灯)
-constexpr uint32_t kPinBtnMode = PA10;     // 内部プルアップ, 押下で Low
-constexpr uint32_t kPinBtnStart = PB3;
-
 // ---------------- 機構 ----------------
 constexpr float kCellMm = 180.0f;
+constexpr float kPostHalfMm = 6.0f;           // 柱（12 mm 角）の半分
+// 左右の壁センサの取り付け位置: クランク軸（機体中心）から前方への距離 [mm]。
+// 真横（90°）に向ける。斜め前向きだと隣の区画の柱を壁と誤検知する（test/test_sim で確認）。
+constexpr float kSideSensorForwardMm = 35.0f;
 constexpr float kEncoderCountsPerMotorRev = 28.0f;  // 7 極対 x 4 逓倍
 constexpr float kGearRatio = 100.0f;                // ギヤ比（購入したモータに合わせる）
 constexpr float kCountsPerCrankRev = kEncoderCountsPerMotorRev * kGearRatio;
@@ -66,19 +39,18 @@ constexpr float kTurnAccel = 540.0f;     // [deg/s^2]
 constexpr float kMaxCrankRps = 2.5f;  // duty 1.0 でのクランク回転数（150 rpm 品。フィードフォワード用）
 // クランク回転速度 PID (誤差 rev/s -> PWM duty [-1, 1])
 constexpr float kCrankKp = 0.6f, kCrankKi = 6.0f, kCrankKd = 0.0f;
+// 直進時の距離フィードバック (誤差 mm -> 速度補正 mm/s)
+constexpr float kDistanceKp = 4.0f;
 // 直進時の向き保持 (誤差 deg -> 角速度補正 deg/s)
 constexpr float kHeadingKp = 4.0f;
 // 左右壁による中央寄せ (センサ差 -> 角速度補正 deg/s)
 constexpr float kWallCenterKp = 0.02f;
+// 中央寄せの積分: 壁から見たずれを向きの基準に反映する速さ (センサ差 -> deg/s)
+constexpr float kWallTrimGain = 0.005f;
 // 旋回時の角速度追従 (誤差 deg/s -> 角速度補正 deg/s)
 constexpr float kYawRateKp = 1.5f;
-
-// ---------------- 壁センサ閾値（ADC 12bit, 点灯 - 消灯 の差分）----------------
-constexpr int kWallThrFront = 180;
-constexpr int kWallThrSide = 220;
-constexpr int kSideRefL = 900;   // 区画中央にいるときの左右センサ値（実機で計測して設定）
-constexpr int kSideRefR = 900;
-constexpr int kFrontRefSum = 2600;  // 前壁があるとき中央で停止している際の FL+FR
+// 旋回時の角度追従 (誤差 deg -> 角速度補正 deg/s)。足の横滑りで実効が落ちるので直進より強くする
+constexpr float kTurnAngleKp = 15.0f;
 
 constexpr float kBatteryCutoffV = 6.6f;  // 2S LiPo 下限
 

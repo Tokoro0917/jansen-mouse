@@ -3,7 +3,11 @@
 
 #include <Arduino.h>
 
+#include "mouse_io.h"
+
 namespace hw {
+
+using mouse::WallReading;
 
 // ---- モータ ----
 void motorsBegin();
@@ -17,9 +21,6 @@ int32_t encoderLeft();
 int32_t encoderRight();
 
 // ---- 壁センサ ----
-struct WallReading {
-  int fl, l, r, fr;  // 点灯時 - 消灯時
-};
 void wallSensorsBegin();
 // 制御周期ごとに呼ぶ（前方/側方を交互にサンプリングする）
 void wallSensorsSample();
@@ -37,5 +38,21 @@ void led(bool on);
 bool modeButton();
 bool startButton();
 float batteryVolts();
+
+// 走行制御・探索から使う窓口（mouse::MouseIO の実機実装）
+class HardwareIO : public mouse::MouseIO {
+ public:
+  void motorsSet(float left, float right) override { hw::motorsSet(left, right); }
+  void motorsBrake() override { hw::motorsBrake(); }
+  int32_t encoderLeft() const override { return hw::encoderLeft(); }
+  int32_t encoderRight() const override { return hw::encoderRight(); }
+  void wallSensorsSample() override { hw::wallSensorsSample(); }
+  WallReading wallSensors() const override { return hw::wallSensors(); }
+  float yawRateDps() override { return hw::imuYawRateDps(); }
+  float batteryVolts() const override { return hw::batteryVolts(); }
+  void delayMs(int ms) override { delay(ms); }
+  void lock() override { noInterrupts(); }
+  void unlock() override { interrupts(); }
+};
 
 }  // namespace hw

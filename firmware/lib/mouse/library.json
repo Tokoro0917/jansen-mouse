@@ -1,0 +1,8 @@
+{
+  "name": "mouse",
+  "version": "0.1.0",
+  "description": "Motion control and run procedures over an abstract hardware interface",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": [{"name": "maze"}, {"name": "control"}]
+}

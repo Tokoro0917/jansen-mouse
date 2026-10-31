@@ -25,11 +25,12 @@ mechanism/   テオヤンセン機構の運動学シミュレーション (Pytho
   jansen/      リンク計算・歩容解析・積層/干渉チェック・CLI
   tests/       pytest
 firmware/    STM32F411 (Black Pill) 用ファームウェア (PlatformIO + Arduino)
-  include/     config.h（ピン・調整値）, mechanism_params.h（自動生成）
+  include/     config.h（調整値）, mechanism_params.h（自動生成）
   lib/maze/    迷路・歩数マップ・探索ロジック（ハード非依存）
   lib/control/ PID・台形速度プロファイル（ハード非依存）
-  src/         ドライバ, 1kHz 走行制御, メイン
-  test/        Unity による PC 上の単体試験
+  lib/mouse/   1kHz 走行制御・探索/最短走行の手順（ハード非依存）
+  src/         ピン割り当て・ドライバ・メイン（実機専用）
+  test/        Unity による PC 上の単体試験と走行シミュレーション
 cad/         OpenSCAD のパラメトリック部品と組立図（*_generated.scad は自動生成）
 docs/        設計資料・部品表・解析結果
 ```
@@ -75,6 +76,18 @@ pio run -e blackpill_f411ce # 実機向けビルド
 pio run -e blackpill_f411ce -t upload   # ST-LINK で書き込み
 ```
 
+### 走行シミュレーション
+
+実機と同じ走行制御・探索コード（`lib/mouse`）を、PC 上の模擬ロボットで動かします。
+脚の滑り・1 回転内の速度の揺れ・ジャイロのずれ・赤外センサ（壁と柱へのレイキャスト）を模擬し、
+ランダム迷路で「探索 → 帰還 → 最短走行」を行って、壁の誤検知と衝突がないことを確認します。
+
+```bash
+pio test -e native -f test_sim                      # 迷路 4 面（CI でも実行）
+SIM_EXTENDED=1 pio test -e native -f test_sim -v    # さらに 12 面
+SIM_TRACE=1 pio test -e native -f test_sim -v       # 壁の誤検知・衝突があった区画を表示
+```
+
 操作: **MODE** ボタンでモード選択 → **START** で実行。
 
 | モード | 内容 |
@@ -95,5 +108,6 @@ pio run -e blackpill_f411ce -t upload   # ST-LINK で書き込み
 - [x] 機構の運動学シミュレーションと寸法決定
 - [x] 迷路探索・最短経路アルゴリズム（PC 上で検証済み）
 - [x] 実機ファームウェア（ビルド確認済み・実機未調整）
+- [x] 走行シミュレーションで探索・最短走行を検証（16 面で衝突・壁の誤検知なし）
 - [x] パラメトリック CAD（積層順の自動決定・干渉チェック・組立図）
 - [ ] 試作・実機でのパラメータ調整（センサ閾値、前進量の補正、PID ゲイン）
