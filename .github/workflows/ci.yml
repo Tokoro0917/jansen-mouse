@@ -22,7 +22,23 @@ jobs:
           python -m jansen.cli header -o ../firmware/include/mechanism_params.h
           python -m jansen.cli scad -o ../cad/links_generated.scad
           python -m jansen.cli report -o ../docs/jansen_report.md
+          python -m jansen.cli assembly -o ../cad/assembly_generated.scad
           git diff --exit-code
+
+  cad:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cad
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq openscad
+      - name: 全部品と組立図がエラーなく生成できるか確認
+        run: |
+          for p in bar tri_upper tri_foot web frame coupler layout; do
+            openscad --hardwarnings -D "PART=\"$p\"" -o "/tmp/$p.stl" parts.scad
+          done
+          openscad --hardwarnings -o /tmp/assembly.stl assembly_generated.scad
 
   firmware:
     runs-on: ubuntu-latest
