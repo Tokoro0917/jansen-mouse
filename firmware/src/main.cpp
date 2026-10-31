@@ -5,123 +5,52 @@
 //   1: 探索走行（スタート → ゴール → スタート）
 //   2: 最短走行（探索結果の既知壁のみで経路を作り、直線をまとめて走る）
 //   3: 前進量の較正（5 区画直進。実測距離から cfg::kTravelCorrection を求める）
+//
+// 走行制御（lib/mouse/motion）と探索手順（lib/mouse/runner）はハードウェア非依存で、
+// PC 上のシミュレーション（test/test_sim）でも同じコードが動く。
 #include <Arduino.h>
 
 #include "config.h"
 #include "hardware.h"
-#include "explorer.h"
-#include "maze.h"
 #include "motion.h"
+#include "runner.h"
 
 namespace {
 
-const maze::Pos kGoals[] = {{7, 7}, {7, 8}, {8, 7}, {8, 8}};
-const maze::Pos kStart[] = {{0, 0}};
 constexpr int kNumModes = 4;
 
-maze::Maze g_maze;
-maze::Dir g_heading_after_search = maze::kNorth;
+hw::HardwareIO g_io;
+mouse::WallTuning g_tuning;  // 実機で計測した値に書き換える（docs/hardware.md 参照）
+mouse::Motion g_motion(g_io, g_tuning);
+mouse::Runner g_runner(g_io, g_motion, g_tuning);
 HardwareTimer* g_timer = nullptr;
 
-void controlIsr() { motion.tick(); }
+void controlIsr() { g_motion.tick(); }
 
-maze::WallObservation senseWalls() {
-  const hw::WallReading w = hw::wallSensors();
-  return maze::WallObservation{
-      w.l > cfg::kWallThrSide,
-      (w.fl + w.fr) / 2 > cfg::kWallThrFront,
-      w.r > cfg::kWallThrSide,
-  };
-}
-
-void doTurn(maze::Move mv) {
-  switch (mv) {
-    case maze::Move::kTurnLeft: motion.turn(90.0f); break;
-    case maze::Move::kTurnRight: motion.turn(-90.0f); break;
-    case maze::Move::kTurnBack: motion.turn(180.0f); break;
-    default: return;
-  }
-  motion.wait();
-}
-
-// 区画中心で停止 → 壁を見る → 旋回 → 1 区画前進 を繰り返す（歩行機構向けの確実な方式）
-bool explore(maze::Explorer* ex) {
-  while (true) {
-    delay(150);  // 歩行振動が収まりセンサ値が落ち着くまで待つ
-    const maze::WallObservation seen = senseWalls();
-    const maze::Move mv = ex->step(seen);
-    if (mv == maze::Move::kArrived) return true;
-    if (mv == maze::Move::kStuck) return false;
-    if (seen.front && mv != maze::Move::kForward) {
-      motion.alignFront();
-      motion.wait();
-    }
-    doTurn(mv);
-    ex->applyTurn(mv);
-    motion.straight(cfg::kCellMm, cfg::kSearchSpeed, true);
-    motion.wait();
-    ex->applyForward();
-    if (hw::batteryVolts() < cfg::kBatteryCutoffV) return false;
-  }
-}
-
-void runSearch() {
-  g_maze.reset();
-  maze::Explorer ex(&g_maze, kGoals, 4);
-  if (!explore(&ex)) {
+void beepResult(mouse::RunResult r) {
+  if (r == mouse::RunResult::kOk) {
+    hw::beep(2500, 150);
+    delay(200);
+    hw::beep(2500, 150);
+  } else {
     hw::beep(200, 800);
-    return;
   }
-  hw::beep(2000, 300);
-  ex.setTargets(kStart, 1);
-  if (!explore(&ex)) {
-    hw::beep(200, 800);
-    return;
-  }
-  g_heading_after_search = ex.heading();
-  hw::beep(2500, 150);
-  delay(200);
-  hw::beep(2500, 150);
-}
-
-void runFast() {
-  maze::Step steps[128];
-  const int n = maze::buildFastPath(g_maze, maze::Pos{0, 0}, maze::kNorth, kGoals, 4, steps, 128);
-  if (n < 0) {
-    hw::beep(200, 800);  // 未探索、または経路なし
-    return;
-  }
-  for (int i = 0; i < n; ++i) {
-    switch (steps[i].action) {
-      case maze::Action::kStraight:
-        motion.straight(cfg::kCellMm * steps[i].cells, cfg::kFastSpeed, true);
-        motion.wait();
-        break;
-      case maze::Action::kTurnLeft: doTurn(maze::Move::kTurnLeft); break;
-      case maze::Action::kTurnRight: doTurn(maze::Move::kTurnRight); break;
-      case maze::Action::kTurnBack: doTurn(maze::Move::kTurnBack); break;
-    }
-  }
-  hw::beep(3000, 500);
-}
-
-void runTravelCalibration() {
-  const float start = motion.distanceMm();
-  motion.straight(cfg::kCellMm * 5, cfg::kSearchSpeed, false);
-  motion.wait();
-  Serial.printf("odometry: %.1f mm (target %.1f mm)\n", motion.distanceMm() - start,
-                cfg::kCellMm * 5);
-  Serial.println("実測距離 / 900 を cfg::kTravelCorrection に掛けてください");
 }
 
 void runSensorMonitor() {
   while (!hw::modeButton()) {
     const hw::WallReading w = hw::wallSensors();
     Serial.printf("FL %4d  L %4d  R %4d  FR %4d | yaw %7.1f | encL %7ld encR %7ld | %.2f V\n",
-                  w.fl, w.l, w.r, w.fr, motion.yawDeg(), (long)hw::encoderLeft(),
+                  w.fl, w.l, w.r, w.fr, g_motion.yawDeg(), (long)hw::encoderLeft(),
                   (long)hw::encoderRight(), hw::batteryVolts());
     delay(100);
   }
+}
+
+void runTravelCalibration() {
+  const float odo = g_runner.walkCells(5);
+  Serial.printf("odometry: %.1f mm (target %.1f mm)\n", odo, cfg::kCellMm * 5);
+  Serial.println("実測距離 / 900 を cfg::kTravelCorrection に掛けてください");
 }
 
 int selectMode() {
@@ -158,7 +87,7 @@ void setup() {
     }
   }
   hw::imuCalibrate(1000);  // 静止状態で 1 秒間ジャイロのバイアスを測る
-  motion.begin();
+  g_motion.begin();
 
   g_timer = new HardwareTimer(TIM11);  // TIM10 は tone() が使用
   g_timer->setOverflow(static_cast<uint32_t>(cfg::kControlHz), HERTZ_FORMAT);
@@ -172,9 +101,9 @@ void loop() {
   delay(1000);  // 手を離す時間
   switch (mode) {
     case 0: runSensorMonitor(); break;
-    case 1: runSearch(); break;
-    case 2: runFast(); break;
+    case 1: beepResult(g_runner.search([] { hw::beep(2000, 300); })); break;
+    case 2: beepResult(g_runner.fastRun()); break;
     case 3: runTravelCalibration(); break;
   }
-  motion.stop();
+  g_motion.stop();
 }

@@ -3,6 +3,7 @@
 #include <SPI.h>
 
 #include "config.h"
+#include "pins.h"
 
 namespace hw {
 
@@ -10,8 +11,8 @@ namespace hw {
 static constexpr int kPwmResolution = 1000;
 
 void motorsBegin() {
-  pinMode(cfg::kPinMotorLDir, OUTPUT);
-  pinMode(cfg::kPinMotorRDir, OUTPUT);
+  pinMode(pins::kPinMotorLDir, OUTPUT);
+  pinMode(pins::kPinMotorRDir, OUTPUT);
   analogWriteFrequency(20000);  // 可聴域外
   analogWriteResolution(10);
   motorsBrake();
@@ -25,13 +26,13 @@ static void driveOne(uint32_t pwm_pin, uint32_t dir_pin, float duty) {
 }
 
 void motorsSet(float left, float right) {
-  driveOne(cfg::kPinMotorLPwm, cfg::kPinMotorLDir, left * cfg::kMotorLSign);
-  driveOne(cfg::kPinMotorRPwm, cfg::kPinMotorRDir, right * cfg::kMotorRSign);
+  driveOne(pins::kPinMotorLPwm, pins::kPinMotorLDir, left * cfg::kMotorLSign);
+  driveOne(pins::kPinMotorRPwm, pins::kPinMotorRDir, right * cfg::kMotorRSign);
 }
 
 void motorsBrake() {
-  analogWrite(cfg::kPinMotorLPwm, 0);
-  analogWrite(cfg::kPinMotorRPwm, 0);
+  analogWrite(pins::kPinMotorLPwm, 0);
+  analogWrite(pins::kPinMotorRPwm, 0);
 }
 
 // ---------------- エンコーダ ----------------
@@ -43,26 +44,26 @@ static const int8_t kQuad[16] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1
 static volatile uint8_t prev_l = 0, prev_r = 0;
 
 static void isrLeft() {
-  const uint8_t curr = (digitalRead(cfg::kPinEncLA) << 1) | digitalRead(cfg::kPinEncLB);
+  const uint8_t curr = (digitalRead(pins::kPinEncLA) << 1) | digitalRead(pins::kPinEncLB);
   enc_l += kQuad[(prev_l << 2) | curr] * cfg::kMotorLSign;
   prev_l = curr;
 }
 
 static void isrRight() {
-  const uint8_t curr = (digitalRead(cfg::kPinEncRA) << 1) | digitalRead(cfg::kPinEncRB);
+  const uint8_t curr = (digitalRead(pins::kPinEncRA) << 1) | digitalRead(pins::kPinEncRB);
   enc_r += kQuad[(prev_r << 2) | curr] * cfg::kMotorRSign;
   prev_r = curr;
 }
 
 void encodersBegin() {
-  const uint32_t pins[] = {cfg::kPinEncLA, cfg::kPinEncLB, cfg::kPinEncRA, cfg::kPinEncRB};
+  const uint32_t pins[] = {pins::kPinEncLA, pins::kPinEncLB, pins::kPinEncRA, pins::kPinEncRB};
   for (uint32_t p : pins) pinMode(p, INPUT_PULLUP);
-  prev_l = (digitalRead(cfg::kPinEncLA) << 1) | digitalRead(cfg::kPinEncLB);
-  prev_r = (digitalRead(cfg::kPinEncRA) << 1) | digitalRead(cfg::kPinEncRB);
-  attachInterrupt(digitalPinToInterrupt(cfg::kPinEncLA), isrLeft, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(cfg::kPinEncLB), isrLeft, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(cfg::kPinEncRA), isrRight, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(cfg::kPinEncRB), isrRight, CHANGE);
+  prev_l = (digitalRead(pins::kPinEncLA) << 1) | digitalRead(pins::kPinEncLB);
+  prev_r = (digitalRead(pins::kPinEncRA) << 1) | digitalRead(pins::kPinEncRB);
+  attachInterrupt(digitalPinToInterrupt(pins::kPinEncLA), isrLeft, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(pins::kPinEncLB), isrLeft, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(pins::kPinEncRA), isrRight, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(pins::kPinEncRB), isrRight, CHANGE);
 }
 
 int32_t encoderLeft() { return enc_l; }
@@ -73,18 +74,18 @@ static volatile WallReading wall{0, 0, 0, 0};
 static bool sample_front = true;
 
 void wallSensorsBegin() {
-  pinMode(cfg::kPinIrLedFront, OUTPUT);
-  pinMode(cfg::kPinIrLedSide, OUTPUT);
-  digitalWrite(cfg::kPinIrLedFront, LOW);
-  digitalWrite(cfg::kPinIrLedSide, LOW);
+  pinMode(pins::kPinIrLedFront, OUTPUT);
+  pinMode(pins::kPinIrLedSide, OUTPUT);
+  digitalWrite(pins::kPinIrLedFront, LOW);
+  digitalWrite(pins::kPinIrLedSide, LOW);
   analogReadResolution(12);
 }
 
 void wallSensorsSample() {
   // 外乱光を打ち消すため、消灯時と点灯時の差分を取る
-  const uint32_t led = sample_front ? cfg::kPinIrLedFront : cfg::kPinIrLedSide;
-  const uint32_t a = sample_front ? cfg::kPinSensFL : cfg::kPinSensL;
-  const uint32_t b = sample_front ? cfg::kPinSensFR : cfg::kPinSensR;
+  const uint32_t led = sample_front ? pins::kPinIrLedFront : pins::kPinIrLedSide;
+  const uint32_t a = sample_front ? pins::kPinSensFL : pins::kPinSensL;
+  const uint32_t b = sample_front ? pins::kPinSensFR : pins::kPinSensR;
   const int off_a = analogRead(a);
   const int off_b = analogRead(b);
   digitalWrite(led, HIGH);
@@ -121,31 +122,31 @@ static const SPISettings kImuSpi(1000000, MSBFIRST, SPI_MODE3);
 
 static void imuWrite(uint8_t reg, uint8_t val) {
   SPI.beginTransaction(kImuSpi);
-  digitalWrite(cfg::kPinImuCs, LOW);
+  digitalWrite(pins::kPinImuCs, LOW);
   SPI.transfer(reg & 0x7F);
   SPI.transfer(val);
-  digitalWrite(cfg::kPinImuCs, HIGH);
+  digitalWrite(pins::kPinImuCs, HIGH);
   SPI.endTransaction();
 }
 
 static uint8_t imuRead(uint8_t reg, uint8_t* buf = nullptr, int n = 1) {
   uint8_t first = 0;
   SPI.beginTransaction(kImuSpi);
-  digitalWrite(cfg::kPinImuCs, LOW);
+  digitalWrite(pins::kPinImuCs, LOW);
   SPI.transfer(reg | 0x80);
   for (int i = 0; i < n; ++i) {
     const uint8_t v = SPI.transfer(0);
     if (i == 0) first = v;
     if (buf) buf[i] = v;
   }
-  digitalWrite(cfg::kPinImuCs, HIGH);
+  digitalWrite(pins::kPinImuCs, HIGH);
   SPI.endTransaction();
   return first;
 }
 
 bool imuBegin() {
-  pinMode(cfg::kPinImuCs, OUTPUT);
-  digitalWrite(cfg::kPinImuCs, HIGH);
+  pinMode(pins::kPinImuCs, OUTPUT);
+  digitalWrite(pins::kPinImuCs, HIGH);
   SPI.begin();
   imuWrite(kRegPwrMgmt1, 0x80);  // リセット
   delay(100);
@@ -176,18 +177,18 @@ float imuYawRateDps() { return imuRawZ() - gyro_bias; }
 
 // ---------------- UI ----------------
 void uiBegin() {
-  pinMode(cfg::kPinLed, OUTPUT);
-  pinMode(cfg::kPinBuzzer, OUTPUT);
-  pinMode(cfg::kPinBtnMode, INPUT_PULLUP);
-  pinMode(cfg::kPinBtnStart, INPUT_PULLUP);
+  pinMode(pins::kPinLed, OUTPUT);
+  pinMode(pins::kPinBuzzer, OUTPUT);
+  pinMode(pins::kPinBtnMode, INPUT_PULLUP);
+  pinMode(pins::kPinBtnStart, INPUT_PULLUP);
   led(false);
 }
 
-void beep(int freq_hz, int ms) { tone(cfg::kPinBuzzer, freq_hz, ms); }
-void led(bool on) { digitalWrite(cfg::kPinLed, on ? LOW : HIGH); }
-bool modeButton() { return digitalRead(cfg::kPinBtnMode) == LOW; }
-bool startButton() { return digitalRead(cfg::kPinBtnStart) == LOW; }
+void beep(int freq_hz, int ms) { tone(pins::kPinBuzzer, freq_hz, ms); }
+void led(bool on) { digitalWrite(pins::kPinLed, on ? LOW : HIGH); }
+bool modeButton() { return digitalRead(pins::kPinBtnMode) == LOW; }
+bool startButton() { return digitalRead(pins::kPinBtnStart) == LOW; }
 
-float batteryVolts() { return analogRead(cfg::kPinBattery) * (3.3f / 4095.0f) * 3.0f; }
+float batteryVolts() { return analogRead(pins::kPinBattery) * (3.3f / 4095.0f) * 3.0f; }
 
 }  // namespace hw

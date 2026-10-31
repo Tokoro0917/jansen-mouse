@@ -11,4 +11,18 @@ constexpr float kStepHeightMm = 10.1056f;
 constexpr float kBodyLengthMm = 103.4f;
 constexpr float kBodyWidthMm = 102.4f;
 constexpr float kLegGroupPitchMm = 64.2f;  // 左右脚群の中心間距離
+
+// 片側の胴体速度 / クランク角速度 [mm/rad] をクランク 1 回転で 64 等分した表
+// （シミュレーション用。クランク角 0 は組立時の基準位相）
+constexpr int kBodySpeedTableSize = 64;
+constexpr float kBodySpeedTable[kBodySpeedTableSize] = {
+    10.149f, 10.150f, 10.149f, 10.142f, 10.122f, 10.080f, 10.003f, 9.888f,
+    9.712f, 9.482f, 9.164f, 8.777f, 8.274f, 7.686f, 6.949f, 6.031f,
+    6.980f, 6.021f, 6.949f, 7.657f, 8.274f, 8.758f, 9.164f, 9.470f,
+    9.712f, 9.882f, 10.003f, 10.077f, 10.122f, 10.142f, 10.149f, 10.150f,
+    10.149f, 10.150f, 10.149f, 10.142f, 10.122f, 10.080f, 10.003f, 9.888f,
+    9.712f, 9.482f, 9.164f, 8.777f, 8.274f, 7.686f, 6.949f, 6.031f,
+    6.980f, 6.021f, 6.949f, 7.657f, 8.274f, 8.758f, 9.164f, 9.470f,
+    9.712f, 9.882f, 10.003f, 10.077f, 10.122f, 10.142f, 10.149f, 10.150f,
+};
 }  // namespace mech
