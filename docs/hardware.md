@@ -46,6 +46,12 @@
 
 ## 機体構成
 
+![立体図](images/overview_3d.png)
+
+![全体図（部品の説明つき三面図）](images/overview_views.png)
+
+（`python -m jansen.cli drawing -o ../docs/images` で三面図を再生成できます）
+
 ```
                     前
               ┌──────────┐
