@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  mechanism:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mechanism
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - name: 生成物が最新か確認
+        run: |
+          python -m jansen.cli header -o ../firmware/include/mechanism_params.h
+          python -m jansen.cli scad -o ../cad/links_generated.scad
+          python -m jansen.cli report -o ../docs/jansen_report.md
+          git diff --exit-code
+
+  firmware:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('firmware/platformio.ini') }}
+      - run: pip install platformio
+      - run: pio test -e native
+      - run: pio run -e blackpill_f411ce

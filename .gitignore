@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+mechanism/out/
+
+# PlatformIO
+firmware/.pio/
+.vscode/
+
+# CAD 出力
+*.stl

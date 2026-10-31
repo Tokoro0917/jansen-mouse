@@ -1,0 +1,7 @@
+{
+  "name": "maze",
+  "version": "0.1.0",
+  "description": "Micromouse maze model and flood-fill planner (hardware independent)",
+  "frameworks": "*",
+  "platforms": "*"
+}

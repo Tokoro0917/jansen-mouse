@@ -1,0 +1,7 @@
+{
+  "name": "control",
+  "version": "0.1.0",
+  "description": "PID and trapezoidal motion profile (hardware independent)",
+  "frameworks": "*",
+  "platforms": "*"
+}
