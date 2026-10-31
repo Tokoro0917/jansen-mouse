@@ -34,10 +34,14 @@ def test_robot_can_spin_inside_corridor():
     assert fp.diagonal < CORRIDOR_MM - 15.0  # 位置ずれを見込んだ余裕
 
 
-def test_three_throws_per_side_do_not_fit():
-    # 12 脚構成はどの縮尺でも通路内で旋回できない（設計判断の根拠）
-    for scale in (0.40, 0.45, 0.50, 0.55):
-        assert footprint(scale, 3, CENTER_WIDTH, BP).diagonal > CORRIDOR_MM - 15.0
+def test_sixteen_legs_do_not_fit():
+    # 片側 4 スロー（16 脚）はどの縮尺でも、旋回半径の余裕が 8 mm 未満になる（設計判断の根拠）
+    from jansen.body import BodyDesign, leg_obstacles, turning_radius
+
+    for scale in (0.35, 0.40):
+        obs, _ = leg_obstacles(scale, 4, CENTER_WIDTH, BP)
+        radius, _ = turning_radius(BodyDesign(scale, 4, CENTER_WIDTH, BP), obs)
+        assert 84.0 - radius < 8.0
 
 
 def test_spacers_and_webs_clear_the_legs():

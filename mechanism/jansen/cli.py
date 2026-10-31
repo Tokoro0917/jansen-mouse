@@ -24,14 +24,14 @@ from .drive import crank_torque, drive_profile, spin_turn_torque
 from .gait import standard_side, support_analysis
 from .linkage import HOLY_NUMBERS, MOVING_LINKS, JansenLeg, gait_metrics
 
-DEFAULT_SCALE = 0.45   # [mm/unit] 超信地旋回できる外形から決定（docs/design.md 参照）
-DEFAULT_THROWS = 2     # 片側のクランクスロー数（脚は 2 倍）
+DEFAULT_SCALE = 0.40   # [mm/unit] 超信地旋回できる外形から決定（docs/design.md 参照）
+DEFAULT_THROWS = 3     # 片側のクランクスロー数（脚は 2 倍）。片側 6 脚、全体で 12 脚
 CENTER_WIDTH = 26.0    # 中央部（直交出力の N20 ウォームギヤモータ 2 個を並べた幅）[mm]
 CORRIDOR_MM = 168.0    # 区画 180 mm - 壁厚 12 mm
 CELL_MM = 180.0
 BUILD = BuildParams()
 # 駆動解析の前提（docs/design.md「駆動とモータ」参照）
-MASS_KG = 0.20
+MASS_KG = 0.21
 FOOT_MU = 0.6
 LINK_EFFICIENCY = 0.6
 SEARCH_SPEED = 60.0     # [mm/s]
@@ -88,8 +88,7 @@ def build_report(scale: float, throws: int) -> str:
         "## 機体外形（干渉チェック済みの積層から算出）",
         f"- 全長（脚の掃引範囲）: {fp.length:.1f} mm",
         f"- 全幅: {fp.width:.1f} mm（中央部 {CENTER_WIDTH:.0f} mm を含む）",
-        f"- 対角長（超信地旋回の掃引直径）: {fp.diagonal:.1f} mm"
-        f" / 通路幅 {CORRIDOR_MM:.0f} mm（余裕 {CORRIDOR_MM - fp.diagonal:.1f} mm）",
+        f"- 外接長方形の対角長（参考。旋回半径は下の「機体の部品配置」）: {fp.diagonal:.1f} mm",
         f"- 脚モジュール厚: {lay.thickness:.1f} mm"
         f"（脚 {lay.n_layers} 層 + クランクウェブ 2 枚 + フレーム板 1 枚,"
         f" 板厚 {BUILD.plate} mm, ワッシャ {BUILD.washer} mm）",
@@ -363,14 +362,26 @@ def build_assembly(scale: float, throws: int, theta_deg: float) -> str:
 
 
 def build_footprint_table(center_width: float) -> str:
-    rows = ["| 片側スロー数 | 縮尺 | 全長 | 全幅 | 対角長 | 旋回余裕 | 1 回転の前進量 |",
-            "|---|---|---|---|---|---|---|"]
-    for throws in (2, 3):
-        for scale in (0.40, 0.45, 0.50, 0.55):
-            fp = footprint(scale, throws, center_width, BUILD)
-            pr = drive_profile(JansenLeg(scale=scale), standard_side(throws), n=360)
-            rows.append(f"| {throws} | {scale:.2f} | {fp.length:.1f} | {fp.width:.1f} | "
-                        f"{fp.diagonal:.1f} | {CORRIDOR_MM - fp.diagonal:+.1f} | {pr.travel_per_rev:.1f} |")
+    """脚の数・縮尺・板厚ごとの外形。通路に収まるかは、実際の脚の形から求めた超信地旋回の半径で判断する。"""
+    from dataclasses import replace
+
+    from .body import BodyDesign, leg_obstacles, turning_radius
+
+    rows = ["| 脚の数 | 縮尺 | 板厚 | 全長 | 全幅 | 旋回半径 | 壁までの余裕 | 胴体の上下動 | 1 回転の前進量 |",
+            "|---|---|---|---|---|---|---|---|---|"]
+    for throws in (2, 3, 4):
+        for scale in (0.35, 0.40, 0.45):
+            for plate in (2.0, 1.5):
+                bp = replace(BUILD, plate=plate, samples=36)
+                obs, _ = leg_obstacles(scale, throws, center_width, bp)
+                radius, _ = turning_radius(BodyDesign(scale, throws, center_width, bp), obs)
+                length = max(max(abs(o.poly.bounds[0]), abs(o.poly.bounds[2])) for o in obs) * 2
+                width = 2 * max(abs(o.y1) for o in obs)
+                leg = JansenLeg(scale=scale)
+                bob = support_analysis(leg, standard_side(throws)).body_bob
+                travel = drive_profile(leg, standard_side(throws), n=360).travel_per_rev
+                rows.append(f"| {4 * throws} | {scale:.2f} | {plate:.1f} | {length:.1f} | {width:.1f} | {radius:.1f} | "
+                            f"{84.0 - radius:+.1f} | {bob:.2f} | {travel:.1f} |")
     return "\n".join(rows) + "\n"
 
 
