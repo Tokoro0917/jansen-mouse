@@ -12,6 +12,12 @@ constexpr float kBodyLengthMm = 103.4f;
 constexpr float kBodyWidthMm = 102.4f;
 constexpr float kLegGroupPitchMm = 64.2f;  // 左右脚群の中心間距離
 
+// 壁センサの位置（機体中心 = クランク軸の真下から。x 前, y 左）。脚の掃引域を避けた配置（jansen/body.py）
+constexpr float kFrontSensorForwardMm = 48.5f;  // FL / FR: 中央の溝の前端、真正面向き
+constexpr float kFrontSensorLateralMm = 7.0f;
+constexpr float kSideSensorForwardMm = 10.0f;   // L / R: 外側のフレーム板の外、真横向き
+constexpr float kSideSensorLateralMm = 54.7f;
+
 // 片側の胴体速度 / クランク角速度 [mm/rad] をクランク 1 回転で 64 等分した表
 // （シミュレーション用。クランク角 0 は組立時の基準位相）
 constexpr int kBodySpeedTableSize = 64;

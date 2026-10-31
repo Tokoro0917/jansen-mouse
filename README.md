@@ -14,7 +14,9 @@
   部品の積層・干渉を自動計算して確認している。
 - 脚は滑るので、**向きはジャイロで常に閉ループ**、距離はクランク回転数 × 1 回転あたりの前進量で管理。
 - 迷路アルゴリズム（足立法）と制御則はハードウェア非依存にし、**PC 上で単体試験**（ランダム迷路 30 面で探索 → 帰還 → 最短経路を検証）。
-- 機構解析（Python）→ ファーム用定数ヘッダ / CAD 寸法・積層順・組立図 を**自動生成**し、寸法の二重管理をなくしている。
+- モータ・基板・電池・壁センサは**脚が掃引しない場所**（中央の溝・脚より上・外側のフレーム板の外）に配置し、
+  干渉・センサの光路・旋回半径・重量（約 200 g）・転倒角を自動で検証している。
+- 機構解析（Python）→ ファーム用定数ヘッダ（センサ位置を含む）/ CAD 寸法・積層順・組立図 を**自動生成**し、寸法の二重管理をなくしている。
 
 ![組立図](docs/images/assembly.png)
 
@@ -46,6 +48,7 @@ python -m pytest -q
 python -m jansen.cli report                 # 歩容指標とリンク長
 python -m jansen.cli plot -o ../docs/images # 足先軌跡・接地数グラフ
 python -m jansen.cli footprint              # 縮尺・スロー数ごとの機体外形
+python -m jansen.cli body                   # 機体の部品配置の検証（干渉・センサの光路・重量）
 ```
 
 寸法を変えたら、ファームと CAD の定数も再生成します。
@@ -64,6 +67,8 @@ python -m jansen.cli report   -o ../docs/jansen_report.md
 ```bash
 cd cad
 openscad -D 'PART="layout"' -o leg_parts.stl parts.scad   # 脚 1 本分の部品
+openscad -D 'PART="chassis"' -o chassis.stl parts.scad     # 中央シャーシ
+openscad -D 'PART="deck_outline"' -o deck.dxf parts.scad   # メイン基板の外形
 openscad -o assembly.stl assembly_generated.scad          # 全体組立
 ```
 
@@ -110,4 +115,5 @@ SIM_TRACE=1 pio test -e native -f test_sim -v       # 壁の誤検知・衝突�
 - [x] 実機ファームウェア（ビルド確認済み・実機未調整）
 - [x] 走行シミュレーションで探索・最短走行を検証（16 面で衝突・壁の誤検知なし）
 - [x] パラメトリック CAD（積層順の自動決定・干渉チェック・組立図）
+- [x] 機体設計（部品配置・中央シャーシ・センサ配置の検証）
 - [ ] 試作・実機でのパラメータ調整（センサ閾値、前進量の補正、PID ゲイン）

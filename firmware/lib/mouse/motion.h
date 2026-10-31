@@ -35,7 +35,7 @@ class Motion {
   enum class Mode : uint8_t { kIdle, kStraight, kTurn, kAlign };
 
   void drive(float v_mm_s, float w_deg_s);
-  void detectWallEdge(float value, bool* seen, float traveled_mm);
+  void detectWallEdge(float value, bool* seen, float* seen_since_mm, float traveled_mm);
   void stopLocked();
 
   MouseIO& io_;
@@ -55,6 +55,7 @@ class Motion {
   float sens_l_ = 0.0f, sens_r_ = 0.0f;  // 中央寄せ用（強めのローパス）
   float edge_l_ = 0.0f, edge_r_ = 0.0f;  // 壁切れ検出用（遅れの小さいローパス）
   bool wall_seen_l_ = false, wall_seen_r_ = false;
+  float seen_since_l_ = 0.0f, seen_since_r_ = 0.0f;  // 横壁が見え始めた走行距離
   int edge_corrections_ = 0;
   int settle_ticks_ = 0;
 };

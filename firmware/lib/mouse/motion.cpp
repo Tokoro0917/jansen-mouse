@@ -1,5 +1,7 @@
 #include "motion.h"
 
+#include <math.h>
+
 #include "config.h"
 
 namespace mouse {
@@ -18,11 +20,19 @@ constexpr float kEdgeLowPass = 0.3f;  // 壁切れ検出用のローパス係数
 constexpr float kEdgeOnRatio = 1.3f;  // 壁あり判定のヒステリシス（閾値に対する比）
 constexpr float kEdgeOffRatio = 0.7f;
 constexpr float kEdgeMaxCorrectionMm = 25.0f;  // これ以上ずれた壁切れは別の柱とみなして無視
+// 中央寄せに使うのは、この距離以上続けて見えている横壁だけ（柱 12 mm の一瞬の反射を壁と誤らない）
+constexpr float kWallMinRunMm = 25.0f;
 // 横壁が切れる位置: 区画中心から (半区画 + 柱の半分) 先が柱の向こう端。
 // センサはクランク軸より前にあるので、そのとき機体中心は区画中心からこの距離だけ進んでいる。
 constexpr float kWallEdgeMm = cfg::kCellMm / 2 + cfg::kPostHalfMm - cfg::kSideSensorForwardMm;
 
 float clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+// 赤外センサの値は距離のほぼ 2 乗に反比例する。区画中央での値 ref（そのときの距離 ref_dist）を基準に、
+// いまの値から距離 [mm] を求める。こうしておくと、センサの取り付け位置や感度が変わっても制御のゲインが変わらない。
+float wallDistance(float value, float ref, float ref_dist) {
+  return ref_dist * sqrtf(ref / (value > 1.0f ? value : 1.0f));
+}
 }  // namespace
 
 void Motion::begin() {
@@ -44,6 +54,7 @@ void Motion::straight(float mm, float v_max, bool wall_centering) {
   straight_start_mm_ = distanceMm();
   wall_seen_l_ = edge_l_ > tuning_.thr_side;
   wall_seen_r_ = edge_r_ > tuning_.thr_side;
+  seen_since_l_ = seen_since_r_ = -cfg::kCellMm;  // 開始時から見えている壁は区画の壁
   settle_ticks_ = kStraightTimeoutTicks;
   mode_ = Mode::kStraight;
   io_.unlock();
@@ -96,9 +107,12 @@ void Motion::drive(float v_mm_s, float w_deg_s) {
 
 // 壁切れ（横壁がなくなる瞬間）で走行距離を補正する。
 // 直進は必ず区画中心から始まるので、壁切れが起きる走行距離は k x 区画 + kWallEdgeMm に決まる。
-void Motion::detectWallEdge(float value, bool* seen, float traveled_mm) {
+void Motion::detectWallEdge(float value, bool* seen, float* seen_since_mm, float traveled_mm) {
   if (!*seen) {
-    if (value > tuning_.thr_side * kEdgeOnRatio) *seen = true;
+    if (value > tuning_.thr_side * kEdgeOnRatio) {
+      *seen = true;
+      *seen_since_mm = traveled_mm;
+    }
     return;
   }
   if (value >= tuning_.thr_side * kEdgeOffRatio) return;
@@ -141,19 +155,23 @@ void Motion::tick() {
       // 速度プロファイル + エンコーダ距離のフィードバック（速度追従の遅れを距離誤差として残さない）
       const float v_ref = profile_.update(cfg::kDt);
       if (wall_centering_) {
-        detectWallEdge(edge_l_, &wall_seen_l_, distanceMm() - straight_start_mm_);
-        detectWallEdge(edge_r_, &wall_seen_r_, distanceMm() - straight_start_mm_);
+        detectWallEdge(edge_l_, &wall_seen_l_, &seen_since_l_, distanceMm() - straight_start_mm_);
+        detectWallEdge(edge_r_, &wall_seen_r_, &seen_since_r_, distanceMm() - straight_start_mm_);
       }
       const float dist_err = profile_.position() - (distanceMm() - straight_start_mm_);
       const float v = v_ref + cfg::kDistanceKp * dist_err;
       float w_cmd = cfg::kHeadingKp * (heading_ref_ + wall_trim_ - yaw_);
       if (wall_centering_) {
-        const bool wl = sens_l_ > tuning_.thr_side;
-        const bool wr = sens_r_ > tuning_.thr_side;
-        float err = 0.0f;  // 正: 左壁に近い
-        if (wl && wr) err = (sens_l_ - tuning_.side_ref_l) - (sens_r_ - tuning_.side_ref_r);
-        else if (wl) err = 2.0f * (sens_l_ - tuning_.side_ref_l);
-        else if (wr) err = -2.0f * (sens_r_ - tuning_.side_ref_r);
+        const float traveled = distanceMm() - straight_start_mm_;
+        const bool wl = wall_seen_l_ && traveled - seen_since_l_ > kWallMinRunMm;
+        const bool wr = wall_seen_r_ && traveled - seen_since_r_ > kWallMinRunMm;
+        // 区画中央からの横ずれ [mm]（正: 左壁に近い）
+        const float off_l = cfg::kSideWallDistMm - wallDistance(sens_l_, tuning_.side_ref_l, cfg::kSideWallDistMm);
+        const float off_r = cfg::kSideWallDistMm - wallDistance(sens_r_, tuning_.side_ref_r, cfg::kSideWallDistMm);
+        float err = 0.0f;
+        if (wl && wr) err = 0.5f * (off_l - off_r);
+        else if (wl) err = off_l;
+        else if (wr) err = -off_r;
         w_cmd -= cfg::kWallCenterKp * err;
         // 壁から見てずれ続けるなら、ジャイロの向きの基準自体を少しずつ直す（積分動作）
         wall_trim_ = clamp(wall_trim_ - cfg::kWallTrimGain * err * cfg::kDt,
@@ -193,9 +211,13 @@ void Motion::tick() {
     case Mode::kAlign: {
       // 前壁までの距離（FL+FR）と傾き（FL-FR）を目標値に寄せる。
       // 時計回りに傾くと左前センサが壁に近づき FL > FR になるので、反時計回り（正）に回す。
-      const float dist_err = (tuning_.front_ref_sum - (w.fl + w.fr)) * 0.02f;  // [mm/s]
-      const float ang_err = (w.fl - w.fr) * 0.05f;                         // [deg/s]
-      drive(clamp(dist_err, -30.0f, 30.0f), clamp(ang_err, -60.0f, 60.0f));
+      const float ref = 0.5f * tuning_.front_ref_sum;
+      const float d_fl = wallDistance(static_cast<float>(w.fl), ref, cfg::kFrontWallDistMm);
+      const float d_fr = wallDistance(static_cast<float>(w.fr), ref, cfg::kFrontWallDistMm);
+      const float dist_err = 0.5f * (d_fl + d_fr) - cfg::kFrontWallDistMm;  // 正: 遠い → 前進
+      const float ang_err = atan2f(d_fr - d_fl, cfg::kFrontSensorSpanMm) / kDegToRad;  // 正: 反時計回りに回す
+      drive(clamp(cfg::kAlignDistKp * dist_err, -30.0f, 30.0f),
+            clamp(cfg::kAlignAngleKp * ang_err, -60.0f, 60.0f));
       if (--settle_ticks_ <= 0) {
         // 前壁と直角になった = 迷路に対して理想の向き。ジャイロの累積誤差をここで消す。
         yaw_ = heading_ref_;

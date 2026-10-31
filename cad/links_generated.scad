@@ -20,6 +20,14 @@ L_j = 22.500;
 L_k = 27.855;
 L_l = 3.510;
 L_m = 6.750;
+// 機体の部品配置（機体座標: x 前, y 左, z 上。jansen/body.py）
+CRANK_H = 41.33;
+CHASSIS_X = [-40.00, 40.00]; CHASSIS_Y = [-12.50, 12.50]; CHASSIS_Z = [48.83, 72.83];
+ARM_X = [40.00, 45.50]; ARM_Z = [16.00, 72.83];
+MOTOR_X = [-34.00, 7.00]; MOTOR_Z = [34.33, 48.33];
+DECK_X = [-40.00, 40.00]; DECK_Y = [-30.00, 30.00];
+FRONT_BOARD_Y = [-12.00, 12.00]; FRONT_BOARD_Z = [18.00, 44.00];
+SIDE_BOARD_X = [2.00, 18.00]; SIDE_BOARD_Z = [32.00, 44.00];
 LAYER_T = 3;
 LAYER_T_R = 1;
 LAYER_U = 2;

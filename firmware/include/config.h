@@ -11,8 +11,13 @@ namespace cfg {
 constexpr float kCellMm = 180.0f;
 constexpr float kPostHalfMm = 6.0f;           // 柱（12 mm 角）の半分
 // 左右の壁センサの取り付け位置: クランク軸（機体中心）から前方への距離 [mm]。
-// 真横（90°）に向ける。斜め前向きだと隣の区画の柱を壁と誤検知する（test/test_sim で確認）。
-constexpr float kSideSensorForwardMm = 35.0f;
+// 外側のフレーム板の外面に真横（90°）向きに付ける（脚の掃引域を避けた配置。mechanism/jansen/body.py）。
+// 斜め前向きだと隣の区画の柱を壁と誤検知する（test/test_sim で確認）。
+constexpr float kSideSensorForwardMm = mech::kSideSensorForwardMm;
+// 区画中央にいるときの、各センサから壁面までの距離 [mm]（壁面は区画中心から 84 mm）
+constexpr float kSideWallDistMm = 84.0f - mech::kSideSensorLateralMm;
+constexpr float kFrontWallDistMm = 84.0f - mech::kFrontSensorForwardMm;
+constexpr float kFrontSensorSpanMm = 2.0f * mech::kFrontSensorLateralMm;  // FL と FR の左右間隔
 constexpr float kEncoderCountsPerMotorRev = 28.0f;  // 7 極対 x 4 逓倍
 constexpr float kGearRatio = 100.0f;                // ギヤ比（購入したモータに合わせる）
 constexpr float kCountsPerCrankRev = kEncoderCountsPerMotorRev * kGearRatio;
@@ -43,10 +48,13 @@ constexpr float kCrankKp = 0.6f, kCrankKi = 6.0f, kCrankKd = 0.0f;
 constexpr float kDistanceKp = 4.0f;
 // 直進時の向き保持 (誤差 deg -> 角速度補正 deg/s)
 constexpr float kHeadingKp = 4.0f;
-// 左右壁による中央寄せ (センサ差 -> 角速度補正 deg/s)
-constexpr float kWallCenterKp = 0.02f;
-// 中央寄せの積分: 壁から見たずれを向きの基準に反映する速さ (センサ差 -> deg/s)
-constexpr float kWallTrimGain = 0.005f;
+// 左右壁による中央寄せ (横ずれ mm -> 角速度補正 deg/s)
+constexpr float kWallCenterKp = 1.0f;
+// 中央寄せの積分: 壁から見たずれを向きの基準に反映する速さ (横ずれ mm -> deg/s)
+constexpr float kWallTrimGain = 0.2f;
+// 前壁補正 (距離誤差 mm -> 速度 mm/s, 傾き deg -> 角速度 deg/s)
+constexpr float kAlignDistKp = 3.0f;
+constexpr float kAlignAngleKp = 4.0f;
 // 旋回時の角速度追従 (誤差 deg/s -> 角速度補正 deg/s)
 constexpr float kYawRateKp = 1.5f;
 // 旋回時の角度追従 (誤差 deg -> 角速度補正 deg/s)。足の横滑りで実効が落ちるので直進より強くする
