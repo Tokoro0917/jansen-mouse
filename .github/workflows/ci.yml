@@ -35,10 +35,10 @@ jobs:
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq openscad
       - name: 全部品と組立図がエラーなく生成できるか確認
         run: |
-          for p in bar tri_upper tri_foot web web_motor frame coupler layout motor_clamp rod_post sensor_holder; do
+          for p in bar tri_upper tri_foot web web_motor frame coupler layout bridge motor_clamp sensor_holder; do
             openscad --hardwarnings -D "PART=\"$p\"" -o "/tmp/$p.stl" parts.scad
           done
-          for p in board_outline; do
+          for p in deck_outline; do
             openscad --hardwarnings -D "PART=\"$p\"" -o "/tmp/$p.dxf" parts.scad
           done
           openscad --hardwarnings -o /tmp/assembly.stl assembly_generated.scad

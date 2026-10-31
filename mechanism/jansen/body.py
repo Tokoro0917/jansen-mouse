@@ -25,9 +25,11 @@ BEAM_HALF_ANGLE = 10.0   # 壁センサの光の広がり（円すいの半角�
 
 # 壁センサのホルダ（KOGUMA Mk4 / ToraNeko.Mk3 と同じ形。黒い樹脂で発光の光が受光に直接入らないようにする）
 # 基板の裏（下）にさかさまに付け、発光 OPV332 を基板から遠い穴、受光 SFH 229 FA を近い穴に入れる。
-HOLDER_W, HOLDER_D, HOLDER_H = 6.0, 4.04, 9.9    # 幅（光と直角）、奥行き（光の向き）、高さ [mm]
-HOLDER_EMITTER_DEPTH = 7.6                       # 基板の下面から発光の穴の中心まで [mm]
-HOLDER_RECEIVER_DEPTH = 3.2                      # 基板の下面から受光の穴の中心まで [mm]
+# 基板は脚の上（高さ 64 mm 前後）にあり、壁（高さ 50 mm）より下に光を出すため、ホルダを縦に長くして下げる。
+HOLDER_W, HOLDER_D = 6.0, 4.04                   # 幅（光と直角）、奥行き（光の向き）[mm]
+HOLE_PITCH = 4.4                                 # 発光と受光の穴の間隔 [mm]（Mk4 のホルダと同じ）
+HOLDER_BOTTOM_WALL = 2.3                         # 発光の穴の下の肉厚 [mm]
+BEAM_Z = 42.0                                    # 光の高さ（発光と受光の中間）[mm]。壁の上端 50 mm より 8 mm 下
 STEEL_DENSITY = 7.85e-3
 
 
@@ -109,60 +111,61 @@ def leg_obstacles(scale: float, throws: int, center_width: float, bp: BuildParam
 
 
 # ---------------------------------------------------------------- 標準の配置
-def board_z(scale: float) -> float:
-    """基板の下面の高さ: モータの上面のすぐ上（モータを上から押さえる）。"""
-    return -gait_metrics(JansenLeg(scale=scale)).ground_y + MOTOR_HALF_HEIGHT + 0.5
-
-
 def default_design(scale: float, throws: int, center_width: float, bp: BuildParams) -> BodyDesign:
     """標準の部品配置。寸法・重量は代表的な市販品の値で、購入品に合わせて直す（docs/hardware.md）。
 
-    基板は 1 枚（KOGUMA Mk4 と同じく壁センサも同じ基板）。壁の高さ 50 mm より下に壁センサの光を出すため、
-    脚が入らない中央の溝の中、モータのすぐ上に置く。
+    基板は 1 枚で脚の上に置く。壁センサは基板の前の舌の裏に縦長のホルダで下げ、壁より下に光を出す。
+    電池の位置は、重心が機体の中心（クランク軸の真上）に来るように計算で決める。
     """
     obs, h = leg_obstacles(scale, throws, center_width, bp)
+    frame_top = max(o.poly.bounds[3] for o in obs if o.name.startswith("frame"))
+    deck_z = frame_top + 2.0
+    top = deck_z + 1.0
     cw = center_width / 2
     la = JansenLeg(scale=scale).length("a")
-    tie_z = h + bp.spacer_y
-    bz = board_z(scale)
-    top = bz + BOARD_T
     motor_x = (-34.0, 7.0)
-    clamp_x = (motor_x[0] - 4, motor_x[1] + 4)       # モータ押さえの柱（モータの前後の端の外）
-    clamp_z = (h - MOTOR_HALF_HEIGHT - 2.0, h - MOTOR_HALF_HEIGHT)
+    clamp_x = (motor_x[0] - 4, motor_x[1] + 4)       # モータ押さえのネジ（モータの前後の端の外）
+    bridge_x = (clamp_x[0] - 3, max(clamp_x[1], la) + 3)
+    bridge_z = (h + 7.5, deck_z)
     bw = center_width - 1
-    clamp_vol = (clamp_x[1] - clamp_x[0] + 6) * bw * 2.0 + 2 * math.pi * 2.5 ** 2 * (bz - clamp_z[0])
+    bh = bridge_z[1] - bridge_z[0]
+    # ブリッジの体積: 天板 2.5 mm + タイロッドの所のリブ 5 mm × 2 + モータ押さえのボス φ6 × 2（樹脂は 6 割）
+    bridge_vol = ((bridge_x[1] - bridge_x[0]) * bw * 2.5 + 2 * 5.0 * bw * bh + 2 * math.pi * 3.0 ** 2 * bh)
     d = BodyDesign(scale, throws, center_width, bp)
     d.components = [
         # 中央の溝にモータ 2 個を横に並べる。出力軸（直交）がクランク軸と同軸で、内側のフレーム板を貫いて
         # 最初のクランクウェブに直接入る。本体は後ろ向きに伸ばし、前方は壁センサのために空ける。
-        Component("motor_L", motor_x, (0.5, cw - 0.5), (h - MOTOR_HALF_HEIGHT, h + MOTOR_HALF_HEIGHT), 12.0, "Silver",
+        Component("motor_L", motor_x, (0.5, cw - 0.5), (h - 7, h + 7), 12.0, "Silver",
                   "N20 ウォームギヤモータ + エンコーダ（外形 12 x 14 x 41 を仮定）"),
-        Component("motor_R", motor_x, (-(cw - 0.5), -0.5), (h - MOTOR_HALF_HEIGHT, h + MOTOR_HALF_HEIGHT), 12.0,
-                  "Silver", "同上"),
-        # モータ押さえ: モータを下から支え、前後の柱で基板にネジ止めする（モータを基板と挟む）
-        Component("motor_clamp", (clamp_x[0] - 3, clamp_x[1] + 3), (-(cw - 0.5), cw - 0.5), clamp_z,
-                  clamp_vol * 0.8 * 1.24e-3, "LightSteelBlue", "モータ押さえ（PLA）。板 2 mm と柱 2 本"),
-        Component("clamp_post_rear", (clamp_x[0] - 2.5, clamp_x[0] + 2.5), (-2.5, 2.5), (clamp_z[1], bz), 0.0,
-                  "LightSteelBlue", "モータ押さえの柱（重量は押さえに含む）"),
-        Component("clamp_post_front", (clamp_x[1] - 2.5, clamp_x[1] + 2.5), (-2.5, 2.5), (clamp_z[1], bz), 0.0,
-                  "LightSteelBlue", "同上"),
-        # 基板（1 枚）: 中央の溝の中、モータの上。マイコン（STM32 を直付け）・ドライバ・IMU・壁センサの回路を載せる
-        Component("board", BOARD_X, (-(cw - 0.5), cw - 0.5), (bz, top),
-                  (BOARD_X[1] - BOARD_X[0]) * bw * BOARD_T * FR4_DENSITY + 3.0, "DarkGreen",
-                  f"基板 {BOARD_X[1] - BOARD_X[0]:.0f} x {bw:.0f} x t{BOARD_T}（部品 約 3 g を含む）"),
-        Component("mcu", (-34, -19), (-8, 8), (top, top + 1.5), 0.0, "Navy", "STM32F411（QFN48 を直付け）と周辺部品"),
-        Component("imu", (-5, 5), (-5, 5), (top, top + 1.0), 0.0, "Purple", "IMU（旋回中心の真上）"),
-        Component("driver", (-45, -40), (-4, 4), (top, top + 1.0), 0.0, "Maroon", "DRV8835"),
-        Component("battery", (25, 59), (-9, 9), (top, top + 12.0), 13.0, "Gold",
-                  "2S LiPo 200 mAh（タイロッドを避けて前に置く）"),
-        # 基板とタイロッドをつなぐ柱（3D プリント）。左右の脚群はタイロッドとスリーブでつながっている
-        Component("rod_post_rear", (-la - 3, -la + 3), (-3, 3), (top, tie_z + 3), 0.5, "LightSteelBlue",
-                  "タイロッドの柱（PLA）。基板をタイロッドに留める"),
-        Component("rod_post_front", (la - 3, la + 3), (-3, 3), (top, tie_z + 3), 0.5, "LightSteelBlue", "同上"),
+        Component("motor_R", motor_x, (-(cw - 0.5), -0.5), (h - 7, h + 7), 12.0, "Silver",
+                  "同上"),
+        # 基板（1 枚）: 脚とフレーム板より上。前に細い舌を出し、その裏に壁センサを下げる
+        Component("deck", (-40, 40), (-30, 30), (deck_z, top), 80 * 60 * 1.0 * FR4_DENSITY + 2.0, "DarkGreen",
+                  "基板 80 x 60 x t1.0（壁センサの回路を含む部品 約 2 g）。ブリッジの上面にネジ止め"),
+        Component("deck_front", (40, BOARD_FRONT_X), (-(cw - 0.5), cw - 0.5), (deck_z, top),
+                  (BOARD_FRONT_X - 40) * bw * 1.0 * FR4_DENSITY, "DarkGreen",
+                  "基板の前の舌（裏に壁センサを下げる）"),
+        Component("mcu", (-26.5, 26.5), (9, 30), (top, top + 4), 4.5, "Navy", "Black Pill（ピンヘッダなし、直付け）"),
+        Component("imu", (-25, -15), (-28, -18), (top, top + 1), 1.0, "Purple", "ICM-20602 基板"),
+        Component("driver", (15, 25), (-28, -18), (top, top + 2), 1.0, "Maroon", "DRV8835 基板"),
+        # ブリッジ（3D プリント）: 左右の内側フレーム板をタイロッドでつなぎ、モータを上から押さえ、
+        # 上面に基板を付ける。必要な所（天板・リブ・ボス）だけの形。
+        Component("bridge", bridge_x, (-(cw - 0.5), cw - 0.5), bridge_z, bridge_vol * 0.6 * 1.24e-3,
+                  "LightSteelBlue", "ブリッジ（PLA）。天板とタイロッドの所のリブだけ"),
     ]
     for name, (x, y), a in SENSOR_LAYOUT:
-        d.components.append(holder_component(name, x, y, a, bz))
-    d.sensors = [Sensor(name, (x, y, beam_z(bz)), a, f"holder_{name}") for name, (x, y), a in SENSOR_LAYOUT]
+        d.components.append(holder_component(name, x, y, a, deck_z))
+    d.sensors = [Sensor(name, (x, y, BEAM_Z), a, f"holder_{name}") for name, (x, y), a in SENSOR_LAYOUT]
+    # 電池（13 g）: ほかの部品の重心の反対側に置き、全体の重心を機体の中心 (x, y) = (0, 0) にする。
+    # 脚・フレーム・ピンは左右対称でクランク軸の真下にあるので、部品だけで釣り合わせればよい。
+    battery_mass, battery_size = 13.0, (34.0, 18.0)
+    mx = sum(c.mass_g * c.center()[0] for c in d.components)
+    my = sum(c.mass_g * c.center()[1] for c in d.components)
+    bx, by = -mx / battery_mass, -my / battery_mass
+    d.components.append(Component(
+        "battery", (bx - battery_size[0] / 2, bx + battery_size[0] / 2),
+        (by - battery_size[1] / 2, by + battery_size[1] / 2), (top, top + 12.0), battery_mass, "Gold",
+        "2S LiPo 200 mAh。重心が機体の中心に来る位置に置く"))
     return d
 
 
@@ -171,9 +174,7 @@ def default_design(scale: float, throws: int, center_width: float, bp: BuildPara
 # - L / R: 脚より前（x 60）で真横。脚はセンサの高さでは |x| 44 mm までしか来ないので、光の円すいが脚に当たらない
 # KOGUMA Mk4 は前を外へ 7°、横を交差させて前の柱を見るが、本機は区画中心で止まってその区画の壁を見るので、
 # 前は平行（傾きの検出のため）、横は真横（その区画の横壁、柱から 24 mm 離れた所を見る）にした。
-BOARD_X = (-46.0, 64.0)  # 基板の前後の範囲 [mm]（後ろは脚の後端まで、前は壁センサの前まで）
-BOARD_T = 1.0            # 基板の厚さ [mm]
-MOTOR_HALF_HEIGHT = 7.0  # モータの高さの半分 [mm]（出力軸がクランク軸の高さ）
+BOARD_FRONT_X = 64.0     # 基板の前の舌の前端 [mm]
 SENSOR_LAYOUT = [
     ("FL", (50.0, 5.0), 0.0),
     ("FR", (50.0, -5.0), 0.0),
@@ -182,9 +183,11 @@ SENSOR_LAYOUT = [
 ]
 
 
-def beam_z(board_bottom: float) -> float:
-    """光の高さ: 発光と受光の穴の中間。"""
-    return board_bottom - (HOLDER_EMITTER_DEPTH + HOLDER_RECEIVER_DEPTH) / 2
+def holder_dims(board_bottom: float) -> tuple[float, float, float]:
+    """縦長のホルダの (高さ, 発光の穴の深さ, 受光の穴の深さ)（基板の下面から）。光の高さを BEAM_Z にする。"""
+    emitter = board_bottom - (BEAM_Z - HOLE_PITCH / 2)
+    receiver = board_bottom - (BEAM_Z + HOLE_PITCH / 2)
+    return emitter + HOLDER_BOTTOM_WALL, emitter, receiver
 
 
 def holder_component(name: str, x: float, y: float, a_deg: float, board_bottom: float) -> Component:
@@ -198,7 +201,8 @@ def holder_component(name: str, x: float, y: float, a_deg: float, board_bottom: 
         xs, ys = (x - hw, x + hw), (y, y + d)
     else:
         raise ValueError("ホルダの向きは 0 / ±90° のみ")
-    return Component(f"holder_{name}", xs, ys, (board_bottom - HOLDER_H, board_bottom), 0.22, "Black",
+    height = holder_dims(board_bottom)[0]
+    return Component(f"holder_{name}", xs, ys, (board_bottom - height, board_bottom), 0.22 * height / 9.9, "Black",
                      "壁センサのホルダ（黒い樹脂）+ OPV332 + SFH 229 FA")
 
 
