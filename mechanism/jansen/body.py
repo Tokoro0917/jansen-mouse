@@ -114,7 +114,7 @@ def leg_obstacles(scale: float, throws: int, center_width: float, bp: BuildParam
 def default_design(scale: float, throws: int, center_width: float, bp: BuildParams) -> BodyDesign:
     """標準の部品配置。寸法・重量は代表的な市販品の値で、購入品に合わせて直す（docs/hardware.md）。
 
-    基板は 1 枚で脚の上に置く。壁センサは基板の前の舌の裏に縦長のホルダで下げ、壁より下に光を出す。
+    基板は 1 枚で脚の上に置く。壁センサは基板の前端より内側の裏に縦長のホルダで下げ、壁より下に光を出す。
     電池の位置は、重心が機体の中心（クランク軸の真上）に来るように計算で決める。
     """
     obs, h = leg_obstacles(scale, throws, center_width, bp)
@@ -139,14 +139,12 @@ def default_design(scale: float, throws: int, center_width: float, bp: BuildPara
                   "N20 ウォームギヤモータ + エンコーダ（外形 12 x 14 x 41 を仮定）"),
         Component("motor_R", motor_x, (-(cw - 0.5), -0.5), (h - 7, h + 7), 12.0, "Silver",
                   "同上"),
-        # 基板（1 枚）: 脚とフレーム板より上。前に細い舌を出し、その裏に壁センサを下げる
-        Component("deck", (-40, 40), (-30, 30), (deck_z, top), 80 * 60 * 1.0 * FR4_DENSITY + 2.0, "DarkGreen",
+        # 基板（1 枚）: 脚とフレーム板より上。壁センサは前端の裏に下げる（前に突き出さない）
+        Component("deck", (-40, BOARD_FRONT_X), (-30, 30), (deck_z, top),
+                  (BOARD_FRONT_X + 40) * 60 * 1.0 * FR4_DENSITY + 2.0, "DarkGreen",
                   "基板 80 x 60 x t1.0（壁センサの回路を含む部品 約 2 g）。ブリッジの上面にネジ止め"),
-        Component("deck_front", (40, BOARD_FRONT_X), (-(cw - 0.5), cw - 0.5), (deck_z, top),
-                  (BOARD_FRONT_X - 40) * bw * 1.0 * FR4_DENSITY, "DarkGreen",
-                  "基板の前の舌（裏に壁センサを下げる）"),
         Component("mcu", (-26.5, 26.5), (9, 30), (top, top + 4), 4.5, "Navy", "Black Pill（ピンヘッダなし、直付け）"),
-        Component("imu", (-25, -15), (-28, -18), (top, top + 1), 1.0, "Purple", "ICM-20602 基板"),
+        Component("imu", (27, 37), (-28, -18), (top, top + 1), 1.0, "Purple", "ICM-20602 基板"),
         Component("driver", (15, 25), (-28, -18), (top, top + 2), 1.0, "Maroon", "DRV8835 基板"),
         # ブリッジ（3D プリント）: 左右の内側フレーム板をタイロッドでつなぎ、モータを上から押さえ、
         # 上面に基板を付ける。必要な所（天板・リブ・ボス）だけの形。
@@ -169,18 +167,25 @@ def default_design(scale: float, throws: int, center_width: float, bp: BuildPara
     return d
 
 
-# 壁センサの配置（ホルダの前の面の真ん中、光の向き [deg]: 前 = 0, 左 = +90）
-# - FL / FR: 中央の溝の中で真正面。前の壁まで 34 mm。左右の差で前の壁に対する傾きを見る
-# - L / R: 脚より前（x 60）で真横。脚はセンサの高さでは |x| 44 mm までしか来ないので、光の円すいが脚に当たらない
-# KOGUMA Mk4 は前を外へ 7°、横を交差させて前の柱を見るが、本機は区画中心で止まってその区画の壁を見るので、
-# 前は平行（傾きの検出のため）、横は真横（その区画の横壁、柱から 24 mm 離れた所を見る）にした。
-BOARD_FRONT_X = 64.0     # 基板の前の舌の前端 [mm]
+# 壁センサの配置（ホルダの前の面の真ん中、光の向き [deg]: 前 = 0, 左 = +90）。4 本とも基板の前端（x 40）より内側の裏に下げ、
+# 前に突き出さない。センサの高さ（42 mm）では脚は前後 33 mm までしか来ないので、x 34 より前から光を出せば脚に当たらない。
+# - FL / FR: 外側（中央の溝の端）で真正面。左右の間隔 18 mm で前の壁に対する傾きを見る。前の壁まで 50 mm
+# - L / R: 内側から斜め前 75° に向け、FL / FR のホルダの前を通して横の壁を見る。光が横の壁に当たる点は
+#   機体中心の 58 mm 前（真横向きのセンサを x 58 に置いたのと同じ所を見る）
+BOARD_FRONT_X = 40.0     # 基板の前端 [mm]
 SENSOR_LAYOUT = [
-    ("FL", (50.0, 5.0), 0.0),
-    ("FR", (50.0, -5.0), 0.0),
-    ("L", (60.0, 13.0), 90.0),
-    ("R", (60.0, -13.0), -90.0),
+    ("FL", (34.0, 9.0), 0.0),
+    ("FR", (34.0, -9.0), 0.0),
+    ("L", (37.0, 5.0), 75.0),
+    ("R", (37.0, -5.0), -75.0),
 ]
+
+
+def side_sensor_geometry() -> tuple[float, float]:
+    """左右センサの光が、区画中央にいるときに横の壁に当たる点の前方距離と、そこまでの光の長さ [mm]。"""
+    _, (x, y), a = next(s for s in SENSOR_LAYOUT if s[0] == "L")
+    r = math.radians(a)
+    return x + (WALL_HALF_GAP - y) / math.tan(r), (WALL_HALF_GAP - y) / math.sin(r)
 
 
 def holder_dims(board_bottom: float) -> tuple[float, float, float]:
@@ -190,17 +195,21 @@ def holder_dims(board_bottom: float) -> tuple[float, float, float]:
     return emitter + HOLDER_BOTTOM_WALL, emitter, receiver
 
 
-def holder_component(name: str, x: float, y: float, a_deg: float, board_bottom: float) -> Component:
-    """ホルダの外形（前の面の真ん中 (x, y)、光の向き a）を直方体で表す。向きは 0 / ±90° のみ。"""
+def holder_corners(x: float, y: float, a_deg: float) -> list[tuple[float, float]]:
+    """ホルダの xy 外形の 4 隅（前の面の真ん中 (x, y)、光の向き a）。"""
+    a = math.radians(a_deg)
+    ux, uy = math.cos(a), math.sin(a)       # 光の向き
+    nx, ny = -uy, ux                        # 光と直角
     hw, d = HOLDER_W / 2, HOLDER_D
-    if abs(a_deg) < 1e-6:
-        xs, ys = (x - d, x), (y - hw, y + hw)
-    elif abs(a_deg - 90) < 1e-6:
-        xs, ys = (x - hw, x + hw), (y - d, y)
-    elif abs(a_deg + 90) < 1e-6:
-        xs, ys = (x - hw, x + hw), (y, y + d)
-    else:
-        raise ValueError("ホルダの向きは 0 / ±90° のみ")
+    return [(x + nx * hw, y + ny * hw), (x - nx * hw, y - ny * hw),
+            (x - nx * hw - ux * d, y - ny * hw - uy * d), (x + nx * hw - ux * d, y + ny * hw - uy * d)]
+
+
+def holder_component(name: str, x: float, y: float, a_deg: float, board_bottom: float) -> Component:
+    """ホルダの外形を、斜めの直方体を囲む直方体で表す（干渉判定は安全側になる）。"""
+    pts = holder_corners(x, y, a_deg)
+    xs = (min(p[0] for p in pts), max(p[0] for p in pts))
+    ys = (min(p[1] for p in pts), max(p[1] for p in pts))
     height = holder_dims(board_bottom)[0]
     return Component(f"holder_{name}", xs, ys, (board_bottom - height, board_bottom), 0.22 * height / 9.9, "Black",
                      "壁センサのホルダ（黒い樹脂）+ OPV332 + SFH 229 FA")

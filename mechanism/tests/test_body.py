@@ -1,12 +1,17 @@
 import pytest
 
-from jansen.body import Sensor, default_design, evaluate, leg_obstacles, sensor_blockers
+from jansen.body import Sensor, default_design, evaluate, leg_obstacles, sensor_blockers, side_sensor_geometry
 from jansen.cli import BUILD, CENTER_WIDTH, DEFAULT_SCALE, DEFAULT_THROWS, MASS_KG, build_header
 
 
 @pytest.fixture(scope="module")
-def report():
-    return evaluate(default_design(DEFAULT_SCALE, DEFAULT_THROWS, CENTER_WIDTH, BUILD))
+def design():
+    return default_design(DEFAULT_SCALE, DEFAULT_THROWS, CENTER_WIDTH, BUILD)
+
+
+@pytest.fixture(scope="module")
+def report(design):
+    return evaluate(design)
 
 
 def test_components_do_not_hit_legs_or_each_other(report):
@@ -57,5 +62,23 @@ def test_stability_and_clearance(report):
 
 def test_header_exports_sensor_geometry():
     h = build_header(DEFAULT_SCALE, DEFAULT_THROWS)
-    for name in ("kFrontSensorForwardMm", "kFrontSensorLateralMm", "kSideSensorForwardMm", "kSideSensorLateralMm"):
+    for name in ("kFrontSensorForwardMm", "kFrontSensorLateralMm", "kSideSensorForwardMm", "kSideSensorLateralMm",
+                 "kSideSensorAngleDeg", "kSideSensorSin", "kSideLookAheadMm", "kSideBeamToWallMm"):
         assert name in h
+
+
+def test_sensors_do_not_stick_out_of_the_board(design):
+    """壁センサのホルダはすべて基板の下に収まる（前に突き出す舌を作らない）。"""
+    comps = {c.name: c for c in design.components}
+    deck = comps["deck"]
+    for c in design.components:
+        if c.name.startswith("holder_") or c.name == "battery":
+            assert deck.x[0] <= c.x[0] and c.x[1] <= deck.x[1], c.name
+            assert deck.y[0] <= c.y[0] and c.y[1] <= deck.y[1], c.name
+
+
+def test_side_sensor_looks_inside_the_cell():
+    """左右センサの光は、区画中央にいるとき柱（区画中心から 84〜96 mm）より手前の横壁に当たる。"""
+    look, beam = side_sensor_geometry()
+    assert 30.0 < look < 84.0 - 15.0
+    assert beam > 0

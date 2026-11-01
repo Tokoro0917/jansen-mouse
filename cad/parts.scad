@@ -115,13 +115,10 @@ module motor_clamp() {
 }
 
 
-// メイン基板の外形（2D。基板 CAD に読み込む DXF 用）: 本体と、壁センサ基板を吊る前の舌
+// メイン基板の外形（2D。基板 CAD に読み込む DXF 用）。壁センサは前端より内側の裏に下げるので、前に突き出す所はない
 module deck_outline() {
   difference() {
-    union() {
-      translate([DECK_X[0], DECK_Y[0]]) square([DECK_X[1] - DECK_X[0], DECK_Y[1] - DECK_Y[0]]);
-      translate([DECK_FRONT_X[0] - 1, DECK_FRONT_Y[0]]) square([DECK_FRONT_X[1] - DECK_FRONT_X[0] + 1, DECK_FRONT_Y[1] - DECK_FRONT_Y[0]]);
-    }
+    translate([DECK_X[0], DECK_Y[0]]) square([DECK_X[1] - DECK_X[0], DECK_Y[1] - DECK_Y[0]]);
     holes(DECK_HOLES, d = 2.2);
     // 壁センサのホルダのほぞの穴 3.2 x 3.2
     for (s = SENSORS) translate([s[0], s[1]]) rotate(s[2]) translate([-HOLDER[1] + 1.5, 0]) square([3.2, 3.2], center = true);

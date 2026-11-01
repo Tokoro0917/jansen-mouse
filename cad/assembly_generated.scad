@@ -104,13 +104,12 @@ color("Black") mirror([0, 1, 0]) translate([0, 0, -36.73]) placed_holders();
 color("Silver") translate([-34.00, -12.50, -7.00]) cube([41.00, 12.00, 14.00]);  // motor_L
 color("Silver") translate([-34.00, 0.50, -7.00]) cube([41.00, 12.00, 14.00]);  // motor_R
 color("DarkGreen") translate([-40.00, -30.00, 27.50]) cube([80.00, 60.00, 1.00]);  // deck
-color("DarkGreen") translate([40.00, -12.50, 27.50]) cube([24.00, 25.00, 1.00]);  // deck_front
 color("Navy") translate([-26.50, -30.00, 28.50]) cube([53.00, 21.00, 4.00]);  // mcu
-color("Purple") translate([-25.00, 18.00, 28.50]) cube([10.00, 10.00, 1.00]);  // imu
+color("Purple") translate([27.00, 18.00, 28.50]) cube([10.00, 10.00, 1.00]);  // imu
 color("Maroon") translate([15.00, 18.00, 28.50]) cube([10.00, 10.00, 2.00]);  // driver
-color("Gold") translate([0.03, -5.79, 28.50]) cube([34.00, 18.00, 12.00]);  // battery
-color("Red", 0.6) hull() { translate([50.00, -5.00, 5.27]) sphere(0.8, $fn=8); translate([84.00, -5.00, 5.27]) sphere(0.8, $fn=8); }  // 壁センサ FL の光路
-color("Red", 0.6) hull() { translate([50.00, 5.00, 5.27]) sphere(0.8, $fn=8); translate([84.00, 5.00, 5.27]) sphere(0.8, $fn=8); }  // 壁センサ FR の光路
-color("Red", 0.6) hull() { translate([60.00, -13.00, 5.27]) sphere(0.8, $fn=8); translate([60.00, -84.00, 5.27]) sphere(0.8, $fn=8); }  // 壁センサ L の光路
-color("Red", 0.6) hull() { translate([60.00, 13.00, 5.27]) sphere(0.8, $fn=8); translate([60.00, 84.00, 5.27]) sphere(0.8, $fn=8); }  // 壁センサ R の光路
+color("Gold") translate([4.08, -5.79, 28.50]) cube([34.00, 18.00, 12.00]);  // battery
+color("Red", 0.6) hull() { translate([34.00, -9.00, 5.27]) sphere(0.8, $fn=8); translate([84.00, -9.00, 5.27]) sphere(0.8, $fn=8); }  // 壁センサ FL の光路
+color("Red", 0.6) hull() { translate([34.00, 9.00, 5.27]) sphere(0.8, $fn=8); translate([84.00, 9.00, 5.27]) sphere(0.8, $fn=8); }  // 壁センサ FR の光路
+color("Red", 0.6) hull() { translate([37.00, -5.00, 5.27]) sphere(0.8, $fn=8); translate([58.17, -84.00, 5.27]) sphere(0.8, $fn=8); }  // 壁センサ L の光路
+color("Red", 0.6) hull() { translate([37.00, 5.00, 5.27]) sphere(0.8, $fn=8); translate([58.17, 84.00, 5.27]) sphere(0.8, $fn=8); }  // 壁センサ R の光路
 color("White", 0.25) translate([84, -90, -36.73]) cube([12, 180, 50]);  // 前壁（区画中心にいるとき）

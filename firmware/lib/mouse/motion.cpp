@@ -30,8 +30,8 @@ constexpr float kWallMinRunMm = 25.0f;
 constexpr float kCenterOffsetLimitMm = 10.0f;
 constexpr float kCenterMinRatio = 0.3f;
 // 横壁が切れる位置: 区画中心から (半区画 + 柱の半分) 先が柱の向こう端。
-// センサはクランク軸より前にあるので、そのとき機体中心は区画中心からこの距離だけ進んでいる。
-constexpr float kWallEdgeMm = cfg::kCellMm / 2 + cfg::kPostHalfMm - cfg::kSideSensorForwardMm;
+// センサの光が横の壁に当たる点はクランク軸より前にあるので、そのとき機体中心は区画中心からこの距離だけ進んでいる。
+constexpr float kWallEdgeMm = cfg::kCellMm / 2 + cfg::kPostHalfMm - cfg::kSideLookAheadMm;
 
 float clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
@@ -177,10 +177,12 @@ void Motion::tick() {
                         sens_l_ > kCenterMinRatio * tuning_.side_ref_l;
         const bool wr = wall_seen_r_ && traveled - seen_since_r_ > kWallMinRunMm &&
                         sens_r_ > kCenterMinRatio * tuning_.side_ref_r;
-        // 区画中央からの横ずれ [mm]（正: 左壁に近い）
-        const float off_l = clamp(cfg::kSideWallDistMm - wallDistance(sens_l_, tuning_.side_ref_l, cfg::kSideWallDistMm),
+        // 区画中央からの横ずれ [mm]（正: 左壁に近い）。センサは斜め前向きなので、光の長さの差に sin(向き) を掛ける
+        const float off_l = clamp((cfg::kSideWallDistMm - wallDistance(sens_l_, tuning_.side_ref_l, cfg::kSideWallDistMm)) *
+                                      cfg::kSideBeamSin,
                                   -kCenterOffsetLimitMm, kCenterOffsetLimitMm);
-        const float off_r = clamp(cfg::kSideWallDistMm - wallDistance(sens_r_, tuning_.side_ref_r, cfg::kSideWallDistMm),
+        const float off_r = clamp((cfg::kSideWallDistMm - wallDistance(sens_r_, tuning_.side_ref_r, cfg::kSideWallDistMm)) *
+                                      cfg::kSideBeamSin,
                                   -kCenterOffsetLimitMm, kCenterOffsetLimitMm);
         float err = 0.0f;
         if (wl && wr) err = 0.5f * (off_l - off_r);

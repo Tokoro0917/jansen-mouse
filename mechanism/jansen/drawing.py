@@ -15,7 +15,8 @@ from matplotlib import patches  # noqa: E402
 from shapely import affinity  # noqa: E402
 
 from .assembly import _module_poses, _shape, module_parts  # noqa: E402
-from .body import BEAM_HALF_ANGLE, default_design, evaluate, leg_obstacles, sensor_ray  # noqa: E402
+from .body import (BEAM_HALF_ANGLE, SENSOR_LAYOUT, default_design, evaluate, holder_corners, leg_obstacles,  # noqa: E402
+                   sensor_ray)  # noqa: E402
 from .linkage import JansenLeg  # noqa: E402
 
 plt.rcParams["font.family"] = ["IPAGothic", "IPAPGothic", "DejaVu Sans"]
@@ -28,15 +29,15 @@ PARTS = [
     (4, "モータ", "N20 ウォームギヤ + エンコーダ × 2。出力軸がクランク軸に直結", "#b0b0b0"),
     (5, "ブリッジ", "3D プリント。左右の脚群をつなぎ、モータを押さえ、メイン基板を支える", "#b0c4de"),
     (6, "モータ押さえ", "3D プリント。モータを下から支える", "#7f9cc0"),
-    (7, "基板（1 枚）", "80 × 60 mm + 前の舌。マイコン・ドライバ・IMU・電池・壁センサの回路を載せる", "#2e7d32"),
+    (7, "基板（1 枚）", "80 × 60 mm。マイコン・ドライバ・IMU・電池・壁センサの回路を載せる", "#2e7d32"),
     (8, "マイコン", "Black Pill（STM32F411）", "#1a237e"),
     (9, "電池", "2S LiPo 200 mAh", "#f2c14e"),
     (10, "IMU", "ジャイロ（角速度はどこに置いても同じ）", "#7b1fa2"),
     (11, "モータドライバ", "DRV8835", "#8d1c1c"),
-    (12, "壁センサ", "縦長の黒いホルダに発光・受光。基板の舌の裏から壁の高さより下へ下げる。FL/FR は前、L/R は横", "#111111"),
+    (12, "壁センサ", "縦長の黒いホルダに発光・受光。基板の前端の裏から壁の高さより下へ下げる。FL/FR は真正面、L/R は斜め前 75°", "#111111"),
 ]
 COLOR = {n: c for n, _, _, c in PARTS}
-COMPONENT_PART = {"motor_L": 4, "motor_R": 4, "bridge": 5, "deck": 7, "deck_front": 7, "mcu": 8,
+COMPONENT_PART = {"motor_L": 4, "motor_R": 4, "bridge": 5, "deck": 7, "mcu": 8,
                   "battery": 9, "imu": 10, "driver": 11}
 
 
@@ -91,7 +92,7 @@ def three_views(scale, throws, center_width, bp, out: Path, theta_deg: float = 3
     frame = [o for o in obs if o.name.startswith("frame")][0].poly
     ax.add_patch(patches.Polygon(list(frame.exterior.coords), closed=True, facecolor=COLOR[2],
                                  edgecolor="k", lw=0.5, alpha=0.45, zorder=3))
-    for name in ("motor_L", "deck", "deck_front", "mcu", "battery"):
+    for name in ("motor_L", "deck", "mcu", "battery"):
         c = comps[name]
         _rect(ax, c.x[0], c.x[1], c.z[0], c.z[1], COLOR[COMPONENT_PART[name]], z=4)
     # ブリッジは実際の形（天板・タイロッドの所のリブ・モータ押さえのボス）で描く
@@ -127,7 +128,7 @@ def three_views(scale, throws, center_width, bp, out: Path, theta_deg: float = 3
     mc, bt = comps["mcu"], comps["battery"]
     _tag(ax, 8, (mc.x[0] + mc.x[1]) / 2 - 15, mc.z[1], -4, 9)
     _tag(ax, 9, (bt.x[0] + bt.x[1]) / 2, bt.z[1], 0, 6)
-    _tag(ax, 12, 48, 40, 10, -12)
+    _tag(ax, 12, 36, 40, 12, -14)
     # 寸法
     x_rear = min(o.poly.bounds[0] for o in obs)
     x_front = max(max(c.x[1] for c in d.components), max(o.poly.bounds[2] for o in obs))
@@ -158,8 +159,9 @@ def three_views(scale, throws, center_width, bp, out: Path, theta_deg: float = 3
     for sx in (-la, la):
         ax.plot([-y_out - 2, y_out + 2], [sx, sx], color=COLOR[3], lw=1.6, zorder=6)
     for s in d.sensors:
-        hc = comps[s.board]
-        _rect(ax, -hc.y[1], -hc.y[0], hc.x[0], hc.x[1], COLOR[12], z=7)
+        lay = next(v for v in SENSOR_LAYOUT if v[0] == s.name)
+        ax.add_patch(patches.Polygon([(-py, px) for px, py in holder_corners(*lay[1], lay[2])], closed=True,
+                                     facecolor=COLOR[12], edgecolor="k", lw=0.4, zorder=7))
         (x0, y0), (x1, y1) = sensor_ray(s)
         ax.plot([-y0, -y1], [x0, x1], color="red", lw=1.2, zorder=7)
         t = math.tan(math.radians(BEAM_HALF_ANGLE))

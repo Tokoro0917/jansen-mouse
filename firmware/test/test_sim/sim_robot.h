@@ -18,9 +18,6 @@
 #include "motion.h"
 #include "mouse_io.h"
 
-#ifndef SIDE_ANGLE
-#define SIDE_ANGLE 90  // 左右センサの向き [deg]（-DSIDE_ANGLE=60 で斜め前向きと比較できる）
-#endif
 
 namespace sim {
 
@@ -52,8 +49,8 @@ class SimRobot : public mouse::MouseIO {
   };
   static constexpr Sensor kSensors[4] = {
       {mech::kFrontSensorForwardMm, mech::kFrontSensorLateralMm, 0, 30},     // FL
-      {cfg::kSideSensorForwardMm, mech::kSideSensorLateralMm, SIDE_ANGLE, 30},    // L
-      {cfg::kSideSensorForwardMm, -mech::kSideSensorLateralMm, -SIDE_ANGLE, 30},  // R
+      {mech::kSideSensorForwardMm, mech::kSideSensorLateralMm, mech::kSideSensorAngleDeg, 30},    // L
+      {mech::kSideSensorForwardMm, -mech::kSideSensorLateralMm, -mech::kSideSensorAngleDeg, 30},  // R
       {mech::kFrontSensorForwardMm, -mech::kFrontSensorLateralMm, 0, 30},    // FR
   };
 

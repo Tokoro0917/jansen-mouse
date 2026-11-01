@@ -28,9 +28,9 @@ void Runner::doTurn(maze::Move mv) {
 
 // 区画中心で停止 → 壁を見る → 旋回 → 1 区画前進 を繰り返す（歩行機構向けの確実な方式）
 namespace {
-// 横壁は、左右センサが次の区画の中心を通る瞬間（機体中心が区画中心の kSideSensorForwardMm 手前）に読む。
-// 左右センサは機体中心より前にあるので、区画中心で止まってから読むと、前後に行き過ぎたときに
-// 次の区画の壁を見てしまう（余裕 84 - 60 = 24 mm）。通過時に読めば、前後の誤差に ±78 mm まで耐える。
+// 横壁は、左右センサの光が次の区画の横壁の真ん中に当たる瞬間（機体中心が区画中心の kSideLookAheadMm 手前）に読む。
+// 光は機体中心より前の壁に当たるので、区画中心で止まってから読むと、前後に行き過ぎたときに
+// 次の区画の壁を見てしまう（余裕は 84 - kSideLookAheadMm）。通過時に読めば、前後の誤差に ±78 mm まで耐える。
 constexpr int kSideSampleTicks = 10;  // この tick 数の平均をとる（約 1 mm の区間）
 }  // namespace
 
@@ -40,7 +40,7 @@ bool Runner::forwardOneCell(bool* left, bool* right) {
   long sum_l = 0, sum_r = 0;
   int n = 0;
   while (motion_.busy()) {
-    if (n < kSideSampleTicks && motion_.straightProgressMm() >= cfg::kCellMm - cfg::kSideSensorForwardMm) {
+    if (n < kSideSampleTicks && motion_.straightProgressMm() >= cfg::kCellMm - cfg::kSideLookAheadMm) {
       const WallReading w = io_.wallSensors();
       sum_l += w.l;
       sum_r += w.r;

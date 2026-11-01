@@ -18,7 +18,7 @@ import numpy as np
 from pathlib import Path
 
 from .assembly import BuildParams, PART_JOINTS, footprint
-from .body import (HOLDER_D, HOLDER_W, SENSOR_LAYOUT, holder_dims,
+from .body import (HOLDER_D, HOLDER_W, SENSOR_LAYOUT, holder_dims, side_sensor_geometry,
                    default_design, evaluate, leg_obstacles, sensor_ray)
 from .drive import crank_torque, drive_profile, spin_turn_torque
 from .gait import standard_side, support_analysis
@@ -224,6 +224,7 @@ def build_header(scale: float, throws: int) -> str:
     fp = footprint(scale, throws, CENTER_WIDTH, BUILD)
     pr = drive_profile(leg, standard_side(throws))
     sensors = {sn.name: sn for sn in default_design(scale, throws, CENTER_WIDTH, BUILD).sensors}
+    look, beam = side_sensor_geometry()
     idx = np.linspace(0, len(pr.thetas), SPEED_TABLE_N, endpoint=False).astype(int)
     vals = [f"{v:.3f}f" for v in pr.body_speed[idx]]
     table = "\n".join("    " + ", ".join(vals[i:i + 8]) + "," for i in range(0, len(vals), 8))
@@ -242,10 +243,16 @@ constexpr float kBodyWidthMm = {fp.width:.1f}f;
 constexpr float kLegGroupPitchMm = {fp.width - throws * fp.layout.thickness - BUILD.plate:.1f}f;  // 左右脚群の中心間距離
 
 // 壁センサの位置（機体中心 = クランク軸の真下から。x 前, y 左）。脚の掃引域を避けた配置（jansen/body.py）
-constexpr float kFrontSensorForwardMm = {sensors["FL"].origin[0]:.1f}f;  // FL / FR: 中央の溝の中、真正面向き
+// 4 本とも基板の前端より内側の裏に下げる（前に突き出さない）
+constexpr float kFrontSensorForwardMm = {sensors["FL"].origin[0]:.1f}f;  // FL / FR: 中央の溝の端、真正面向き
 constexpr float kFrontSensorLateralMm = {sensors["FL"].origin[1]:.1f}f;
-constexpr float kSideSensorForwardMm = {sensors["L"].origin[0]:.1f}f;   // L / R: 脚より前、真横向き
+constexpr float kSideSensorForwardMm = {sensors["L"].origin[0]:.1f}f;   // L / R: 内側から斜め前向き
 constexpr float kSideSensorLateralMm = {sensors["L"].origin[1]:.1f}f;
+constexpr float kSideSensorAngleDeg = {sensors["L"].direction_deg:.1f}f;  // 前 = 0, 真横 = 90
+constexpr float kSideSensorSin = {math.sin(math.radians(sensors["L"].direction_deg)):.4f}f;
+// 区画中央にいるとき、左右センサの光が横の壁に当たる点の前方距離と、そこまでの光の長さ
+constexpr float kSideLookAheadMm = {look:.1f}f;
+constexpr float kSideBeamToWallMm = {beam:.1f}f;
 
 // 片側の胴体速度 / クランク角速度 [mm/rad] をクランク 1 回転で {SPEED_TABLE_N} 等分した表
 // （シミュレーション用。クランク角 0 は組立時の基準位相）
@@ -273,7 +280,7 @@ def build_scad(scale: float, throws: int) -> str:
     body = body + "\n// 機体の部品配置（機体座標: x 前, y 左, z 上。jansen/body.py）\n" + "\n".join([
         f"CRANK_H = {-gait_metrics(leg).ground_y:.2f};",
         f"BRIDGE_X = {rng('bridge', 'x')}; BRIDGE_Y = {rng('bridge', 'y')}; BRIDGE_Z = {rng('bridge', 'z')};",
-        f"DECK_Z = {rng('deck', 'z')}; DECK_FRONT_X = {rng('deck_front', 'x')}; DECK_FRONT_Y = {rng('deck_front', 'y')};",
+        f"DECK_Z = {rng('deck', 'z')};",
 
         "SENSORS = [" + ", ".join(f"[{x:.2f}, {y:.2f}, {a:.1f}]" for _, (x, y), a in SENSOR_LAYOUT)
         + "];  // FL, FR, L, R: ホルダの前の面の真ん中 (x, y) と光の向き",

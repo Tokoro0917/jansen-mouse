@@ -13,10 +13,16 @@ constexpr float kBodyWidthMm = 113.6f;
 constexpr float kLegGroupPitchMm = 69.8f;  // 左右脚群の中心間距離
 
 // 壁センサの位置（機体中心 = クランク軸の真下から。x 前, y 左）。脚の掃引域を避けた配置（jansen/body.py）
-constexpr float kFrontSensorForwardMm = 50.0f;  // FL / FR: 中央の溝の中、真正面向き
-constexpr float kFrontSensorLateralMm = 5.0f;
-constexpr float kSideSensorForwardMm = 60.0f;   // L / R: 脚より前、真横向き
-constexpr float kSideSensorLateralMm = 13.0f;
+// 4 本とも基板の前端より内側の裏に下げる（前に突き出さない）
+constexpr float kFrontSensorForwardMm = 34.0f;  // FL / FR: 中央の溝の端、真正面向き
+constexpr float kFrontSensorLateralMm = 9.0f;
+constexpr float kSideSensorForwardMm = 37.0f;   // L / R: 内側から斜め前向き
+constexpr float kSideSensorLateralMm = 5.0f;
+constexpr float kSideSensorAngleDeg = 75.0f;  // 前 = 0, 真横 = 90
+constexpr float kSideSensorSin = 0.9659f;
+// 区画中央にいるとき、左右センサの光が横の壁に当たる点の前方距離と、そこまでの光の長さ
+constexpr float kSideLookAheadMm = 58.2f;
+constexpr float kSideBeamToWallMm = 81.8f;
 
 // 片側の胴体速度 / クランク角速度 [mm/rad] をクランク 1 回転で 64 等分した表
 // （シミュレーション用。クランク角 0 は組立時の基準位相）
