@@ -1,0 +1,327 @@
+"""機体の全体図（部品の説明つき）: 三面図と、色の凡例つきの立体図。
+
+    python -m jansen.cli drawing -o ../docs/images
+"""
+from __future__ import annotations
+
+import math
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib import patches  # noqa: E402
+from shapely import affinity  # noqa: E402
+
+from .assembly import _module_poses, _shape, module_parts  # noqa: E402
+from .body import (BEAM_HALF_ANGLE, SENSOR_LAYOUT, default_design, evaluate, holder_corners, leg_obstacles,  # noqa: E402
+                   sensor_ray)  # noqa: E402
+from .linkage import JansenLeg  # noqa: E402
+
+plt.rcParams["font.family"] = ["IPAGothic", "IPAPGothic", "DejaVu Sans"]
+
+# 番号, 名前, 説明, 色
+PARTS = [
+    (1, "脚（12 本）", "テオヤンセン機構。片側 3 組 × 前後 2 本。足先にゴム", "#e07a5f"),
+    (2, "フレーム板", "1.5 mm 厚、片側 4 枚。脚の固定ピンとクランク軸を支える", "#888888"),
+    (3, "タイロッド", "M2 全ねじ 2 本。全フレーム板とブリッジを横に貫いて締める", "#444444"),
+    (4, "モータ", "N20 ウォームギヤ + エンコーダ × 2。出力軸がクランク軸に直結", "#b0b0b0"),
+    (5, "ブリッジ", "3D プリント。左右の脚群をつなぎ、モータを押さえ、メイン基板を支える", "#b0c4de"),
+    (6, "モータ押さえ", "3D プリント。モータを下から支える", "#7f9cc0"),
+    (7, "基板（1 枚）", "80 × 60 mm。マイコン・ドライバ・IMU・電池・壁センサの回路を載せる", "#2e7d32"),
+    (8, "マイコン", "Black Pill（STM32F411）", "#1a237e"),
+    (9, "電池", "2S LiPo 200 mAh", "#f2c14e"),
+    (10, "IMU", "ジャイロ（角速度はどこに置いても同じ）", "#7b1fa2"),
+    (11, "モータドライバ", "DRV8835", "#8d1c1c"),
+    (12, "壁センサ", "縦長の黒いホルダに発光・受光。基板の前端の裏から壁の高さより下へ下げる。FL/FR は真正面、L/R は斜め前 75°", "#111111"),
+]
+COLOR = {n: c for n, _, _, c in PARTS}
+COMPONENT_PART = {"motor_L": 4, "motor_R": 4, "bridge": 5, "deck": 7, "mcu": 8,
+                  "battery": 9, "imu": 10, "driver": 11}
+
+
+def _tag(ax, n, x, y, dx=0.0, dy=0.0):
+    """番号の丸印（dx, dy だけずらして引き出し線を引く）。"""
+    tx, ty = x + dx, y + dy
+    if dx or dy:
+        ax.plot([x, tx], [y, ty], color="k", lw=0.6, zorder=9)
+    ax.add_patch(patches.Circle((tx, ty), 3.6, facecolor="white", edgecolor="k", lw=0.8, zorder=10))
+    ax.text(tx, ty, str(n), ha="center", va="center", fontsize=7, zorder=11)
+
+
+def _cog(ax, x, y):
+    """重心の印（⊕）。"""
+    ax.add_patch(patches.Circle((x, y), 3.0, facecolor="white", edgecolor="red", lw=1.4, zorder=12))
+    ax.plot([x - 3, x + 3], [y, y], color="red", lw=1.2, zorder=13)
+    ax.plot([x, x], [y - 3, y + 3], color="red", lw=1.2, zorder=13)
+
+
+def _rect(ax, x0, x1, y0, y1, color, alpha=0.9, z=3, **kw):
+    ax.add_patch(patches.Rectangle((x0, y0), x1 - x0, y1 - y0, facecolor=color, edgecolor="k",
+                                   lw=0.4, alpha=alpha, zorder=z, **kw))
+
+
+def three_views(scale, throws, center_width, bp, out: Path, theta_deg: float = 30.0) -> Path:
+    d = default_design(scale, throws, center_width, bp)
+    rep = evaluate(d)
+    obs, h = leg_obstacles(scale, throws, center_width, bp)
+    leg = JansenLeg(scale=scale)
+    comps = {c.name: c for c in d.components}
+    la, ll = leg.length("a"), leg.length("l")
+    tie_z = h + bp.spacer_y
+
+    fig = plt.figure(figsize=(16, 11))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.0, 0.62], width_ratios=[1.15, 1.0, 0.95])
+    ax_side = fig.add_subplot(gs[0, 0])
+    ax_top = fig.add_subplot(gs[0, 1])
+    ax_front = fig.add_subplot(gs[0, 2])
+    ax_leg = fig.add_subplot(gs[1, :])
+
+    # ---------------- 横から（x-z、左側から見る）----------------
+    ax = ax_side
+    ax.set_title("横から見た図（左側から。右が前）", fontsize=11)
+    sweep = [o for o in obs if o.name.startswith("legs")][0].poly
+    ax.add_patch(patches.Polygon(list(sweep.exterior.coords), closed=True, facecolor="#f4d6cc",
+                                 edgecolor="#c97b63", lw=0.6, ls="--", zorder=1))
+    pose = _module_poses(leg, math.radians(theta_deg))
+    for name, js in module_parts().items():
+        sh = affinity.translate(_shape(name, js, pose, leg, bp), 0, h)
+        ax.add_patch(patches.Polygon(list(sh.exterior.coords), closed=True, facecolor=COLOR[1],
+                                     edgecolor="k", lw=0.4, alpha=0.85, zorder=2))
+    frame = [o for o in obs if o.name.startswith("frame")][0].poly
+    ax.add_patch(patches.Polygon(list(frame.exterior.coords), closed=True, facecolor=COLOR[2],
+                                 edgecolor="k", lw=0.5, alpha=0.45, zorder=3))
+    for name in ("motor_L", "deck", "mcu", "battery"):
+        c = comps[name]
+        _rect(ax, c.x[0], c.x[1], c.z[0], c.z[1], COLOR[COMPONENT_PART[name]], z=4)
+    # ブリッジは実際の形（天板・タイロッドの所のリブ・モータ押さえのボス）で描く
+    b = comps["bridge"]
+    _rect(ax, b.x[0], b.x[1], b.z[1] - 2.5, b.z[1], COLOR[5], z=4)
+    for sx in (-la, la):
+        _rect(ax, sx - 2.5, sx + 2.5, b.z[0], b.z[1], COLOR[5], z=4)
+    for cx in (comps["motor_L"].x[0] - 4, comps["motor_L"].x[1] + 4):
+        _rect(ax, cx - 3, cx + 3, b.z[0], b.z[1], COLOR[5], z=4)
+    clamp_x = (comps["motor_L"].x[0] - 7, comps["motor_L"].x[1] + 7)
+    _rect(ax, clamp_x[0], clamp_x[1], comps["motor_L"].z[0] - 2, comps["motor_L"].z[0], COLOR[6], z=4)
+    for s in d.sensors:
+        hc = comps[s.board]
+        _rect(ax, hc.x[0], hc.x[1], hc.z[0], hc.z[1], COLOR[12], z=6)
+        if abs(s.direction_deg) < 1:
+            (x0, _), (x1, _) = sensor_ray(s)
+            ax.plot([x0, x1], [s.origin[2]] * 2, color="red", lw=1.2, zorder=7)
+    for sx in (-la, la):
+        ax.add_patch(patches.Circle((sx, tie_z), 1.3, color=COLOR[3], zorder=8))
+    ax.add_patch(patches.Circle((0, h), 1.6, color="k", zorder=8))
+    ax.text(3, h - 1, f"← クランク軸（高さ {h:.1f}）", fontsize=8, va="center", zorder=9)
+    ax.axhline(0, color="k", lw=1.2)
+    ax.add_patch(patches.Rectangle((84, 0), 12, 50, facecolor="#e8dcc0", edgecolor="#9c8a60", zorder=0))
+    ax.text(90, 52, "前の壁\n（高さ 50）", ha="center", fontsize=7)
+    ax.text(70, 41.5, "光", color="red", fontsize=7)
+    _tag(ax, 1, 4, 6, 0, 0)
+    _tag(ax, 2, la, h - 6, 10, -8)
+    _tag(ax, 3, -la, tie_z, -10, 6)
+    _tag(ax, 4, -20, h, -6, -16)
+    _tag(ax, 5, 10, 56, 0, 0)
+    _tag(ax, 6, clamp_x[0] + 3, comps["motor_L"].z[0] - 1, -8, -12)
+    _tag(ax, 7, -38, comps["deck"].z[1], -8, 6)
+    mc, bt = comps["mcu"], comps["battery"]
+    _tag(ax, 8, (mc.x[0] + mc.x[1]) / 2 - 15, mc.z[1], -4, 9)
+    _tag(ax, 9, (bt.x[0] + bt.x[1]) / 2, bt.z[1], 0, 6)
+    _tag(ax, 12, 36, 40, 12, -14)
+    # 寸法
+    x_rear = min(o.poly.bounds[0] for o in obs)
+    x_front = max(max(c.x[1] for c in d.components), max(o.poly.bounds[2] for o in obs))
+    top = max(c.z[1] for c in d.components)
+    ax.annotate("", (x_rear, -8), (x_front, -8), arrowprops=dict(arrowstyle="<->", lw=0.8))
+    ax.text((x_rear + x_front) / 2, -13, f"全長 {x_front - x_rear:.1f}", ha="center", fontsize=8)
+    ax.annotate("", (x_rear - 6, 0), (x_rear - 6, top), arrowprops=dict(arrowstyle="<->", lw=0.8))
+    ax.text(x_rear - 8, top / 2, f"高さ {top:.1f}", rotation=90, ha="right", va="center", fontsize=8)
+    _cog(ax, rep.cog[0], rep.cog[2])
+    ax.set_xlim(-65, 100)
+    ax.set_ylim(-18, 92)
+
+    # ---------------- 上から（x-y）----------------
+    ax = ax_top
+    ax.set_title("上から見た図（上が前。基板は外し、上の部品だけ描く）", fontsize=11)
+    for o in obs:
+        x0, _, x1, _ = o.poly.bounds
+        if o.name.startswith("legs"):
+            _rect(ax, o.y0, o.y1, x0, x1, "#f4d6cc", alpha=1.0, z=1, ls="--")
+        else:
+            fx0, _, fx1, _ = o.poly.bounds
+            _rect(ax, o.y0, o.y1, fx0, fx1, COLOR[2], alpha=0.8, z=2)
+    for name in ("motor_L", "motor_R", "bridge", "battery", "mcu"):
+        c = comps[name]
+        _rect(ax, -c.y[1], -c.y[0], c.x[0], c.x[1], COLOR[COMPONENT_PART[name]],
+              alpha=0.35 if name == "bridge" else 0.95, z=3 if name == "bridge" else 4)
+    y_out = max(abs(o.y1) for o in obs)
+    for sx in (-la, la):
+        ax.plot([-y_out - 2, y_out + 2], [sx, sx], color=COLOR[3], lw=1.6, zorder=6)
+    for s in d.sensors:
+        lay = next(v for v in SENSOR_LAYOUT if v[0] == s.name)
+        ax.add_patch(patches.Polygon([(-py, px) for px, py in holder_corners(*lay[1], lay[2])], closed=True,
+                                     facecolor=COLOR[12], edgecolor="k", lw=0.4, zorder=7))
+        (x0, y0), (x1, y1) = sensor_ray(s)
+        ax.plot([-y0, -y1], [x0, x1], color="red", lw=1.2, zorder=7)
+        t = math.tan(math.radians(BEAM_HALF_ANGLE))
+        length = math.hypot(x1 - x0, y1 - y0)
+        ux, uy = (x1 - x0) / length, (y1 - y0) / length
+        nx, ny = -uy, ux
+        ax.add_patch(patches.Polygon([(-y0, x0), (-(y1 + ny * length * t), x1 + nx * length * t),
+                                      (-(y1 - ny * length * t), x1 - nx * length * t)],
+                                     closed=True, facecolor="red", alpha=0.08, zorder=0))
+        ax.text(-(x1 if False else y1) * 1.0, x1 + (4 if abs(s.direction_deg) < 1 else 3), s.name,
+                color="red", fontsize=7, ha="center")
+    circle = patches.Circle((0, 0), rep.turning_radius, fill=False, ls=":", color="b", lw=0.9, zorder=8)
+    ax.add_patch(circle)
+    ax.text(rep.turning_radius * 0.72, -rep.turning_radius * 0.72 - 6,
+            f"旋回で通る円\n半径 {rep.turning_radius:.1f}", color="b", fontsize=7)
+    for wy in (-84, 84):
+        ax.add_patch(patches.Rectangle((wy if wy > 0 else wy - 12, -96), 12, 192, facecolor="#e8dcc0",
+                                       edgecolor="#9c8a60", zorder=0))
+    ax.add_patch(patches.Rectangle((-96, 84), 192, 12, facecolor="#e8dcc0", edgecolor="#9c8a60", zorder=0))
+    ax.text(0, 97.5, "前の壁", ha="center", fontsize=7)
+    ax.text(-90, 0, "左の壁", rotation=90, va="center", fontsize=7)
+    ax.annotate("", (-y_out, -60), (y_out, -60), arrowprops=dict(arrowstyle="<->", lw=0.8))
+    ax.text(0, -66, f"全幅 {2 * y_out:.1f}", ha="center", fontsize=8)
+    ax.text(0, -78, "区画の中心に止まったとき。壁の面は中心から 84 mm", ha="center", fontsize=7)
+    _tag(ax, 1, -35, -25, 0, 0)
+    _tag(ax, 1, 35, -25, 0, 0)
+    _tag(ax, 2, -y_out + 0.7, 10, -10, 8)
+    _tag(ax, 3, 40, la, 0, 9)
+    _tag(ax, 4, -6, -20, 0, 0)
+    _tag(ax, 5, 0, 0, 0, 0)
+    _tag(ax, 12, 13, 58, 12, -12)
+    _cog(ax, -rep.cog[1], rep.cog[0])
+    ax.set_xlim(-100, 100)
+    ax.set_ylim(-100, 104)
+
+    # ---------------- 前から（y-z）----------------
+    ax = ax_front
+    ax.set_title("前から見た図", fontsize=11)
+    for o in obs:
+        _, z0, _, z1 = o.poly.bounds
+        if o.name.startswith("legs"):
+            _rect(ax, -o.y1, -o.y0, z0, z1, "#f4d6cc", alpha=1.0, z=1, ls="--")
+        else:
+            _rect(ax, -o.y1, -o.y0, z0, z1, COLOR[2], alpha=0.8, z=2)
+    for name in ("motor_L", "motor_R", "bridge", "deck", "mcu", "battery", "imu", "driver"):
+        c = comps[name]
+        _rect(ax, -c.y[1], -c.y[0], c.z[0], c.z[1], COLOR[COMPONENT_PART[name]],
+              alpha=0.6 if name == "bridge" else 0.95, z=3 if name == "bridge" else 4)
+    ax.plot([-y_out - 2, y_out + 2], [tie_z, tie_z], color=COLOR[3], lw=1.6, zorder=6)
+    for s in d.sensors:
+        hc = comps[s.board]
+        _rect(ax, -hc.y[1], -hc.y[0], hc.z[0], hc.z[1], COLOR[12], z=7)
+        if abs(s.direction_deg) > 1:
+            (_, y0), (_, y1) = sensor_ray(s)
+            ax.plot([-y0, -y1], [s.origin[2]] * 2, color="red", lw=1.2, zorder=7)
+    ax.axhline(0, color="k", lw=1.2)
+    for wy in (-84, 84):
+        ax.add_patch(patches.Rectangle((wy if wy > 0 else wy - 12, 0), 12, 50, facecolor="#e8dcc0",
+                                       edgecolor="#9c8a60", zorder=0))
+    ax.text(-90, 52, "右の壁", ha="center", fontsize=7)
+    ax.text(90, 52, "左の壁", ha="center", fontsize=7)
+    _tag(ax, 1, -35, 12, 0, 0)
+    _tag(ax, 2, -y_out + 0.7, 50, -8, 10)
+    _tag(ax, 3, 45, tie_z, 0, 8)
+    _tag(ax, 4, -6, h, 0, 0)
+    _tag(ax, 7, 26, comps["deck"].z[0], 8, -8)
+    for n, name, dx, dy in ((8, "mcu", -6, 10), (9, "battery", 0, 6), (10, "imu", 8, 12), (11, "driver", -8, 12)):
+        c = comps[name]
+        _tag(ax, n, -(c.y[0] + c.y[1]) / 2, c.z[1], dx, dy)
+    _tag(ax, 12, 13, 42, 12, -16)
+    _cog(ax, -rep.cog[1], rep.cog[2])
+    ax.set_xlim(-100, 100)
+    ax.set_ylim(-10, 105)
+
+    for a in (ax_side, ax_top, ax_front):
+        a.set_aspect("equal")
+        a.grid(alpha=0.2)
+        a.tick_params(labelsize=7)
+    ax_side.set_xlabel("前後 x [mm]（機体中心から）", fontsize=8)
+    ax_side.set_ylabel("高さ z [mm]（床から）", fontsize=8)
+    ax_top.set_xlabel("左右 [mm]", fontsize=8)
+    ax_top.set_ylabel("前後 x [mm]", fontsize=8)
+    ax_front.set_xlabel("左右 [mm]", fontsize=8)
+
+    # ---------------- 凡例 ----------------
+    ax = ax_leg
+    ax.axis("off")
+    cols = 2
+    per = math.ceil(len(PARTS) / cols)
+    for i, (n, name, desc, color) in enumerate(PARTS):
+        col, row = divmod(i, per)
+        x = 0.01 + col * 0.5
+        y = 0.92 - row * 0.13
+        ax.text(x + 0.008, y, f"{n:>2}", transform=ax.transAxes, ha="center", va="center", fontsize=9,
+                bbox=dict(boxstyle="circle,pad=0.25", facecolor="white", edgecolor="k", lw=0.8))
+        ax.add_patch(patches.Rectangle((x + 0.022, y - 0.03), 0.015, 0.06, transform=ax.transAxes,
+                                       facecolor=color, edgecolor="k", lw=0.4))
+        ax.text(x + 0.045, y, f"{name}: {desc}", transform=ax.transAxes, va="center", fontsize=10)
+    ax.text(0.01, 0.0, "⊕ = 重心。赤線 = 壁センサの光（薄い赤は ±10° の広がり）。点線の淡い色 = 脚がクランク 1 回転で動く範囲。"
+            f"寸法は mm。全長 {x_front - x_rear:.1f} × 全幅 {2 * y_out:.1f} × 高さ {top:.1f}、重量 約 {rep.total_mass:.0f} g",
+            transform=ax.transAxes, fontsize=9)
+
+    fig.suptitle(f"Jansen Mouse 機体の全体図（重心 x {rep.cog[0]:+.1f}, y {rep.cog[1]:+.1f}, 高さ {rep.cog[2]:.1f} mm）", fontsize=14)
+    fig.tight_layout()
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "overview_views.png"
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    return path
+
+
+# 立体図（OpenSCAD の組立図の色）の凡例
+SCAD_COLORS = [
+    ("#cd5c5c", "脚の足三角形（足先が床につく）"),
+    ("#ffa500", "脚の上三角形"),
+    ("#4682b4", "脚のリンク j・k（クランクにつながる）"),
+    ("#2e8b57", "脚のリンク c・f"),
+    ("#808080", "フレーム板（片側 4 枚）"),
+    ("#696969", "クランクウェブ（クランク軸の腕）"),
+    ("#b0c4de", "ブリッジ・モータ押さえ"),
+    ("#006400", "基板（1 枚）"),
+    ("#000080", "マイコン（Black Pill）"),
+    ("#ffd700", "電池（2S LiPo）"),
+    ("#800080", "IMU（ジャイロ）"),
+    ("#800000", "モータドライバ"),
+    ("#111111", "壁センサ（ホルダ入り）"),
+    ("#ff0000", "壁センサの光"),
+]
+
+
+def overview_3d(renders: list[tuple[str, str]], out: Path) -> Path:
+    """OpenSCAD で描いた組立図（[(画像, 見出し)]）に色の凡例を付けて 1 枚にする。
+
+    画像は cad/ で次のように作る:
+        xvfb-run -a openscad --camera=10,0,5,62,0,35,330 --imgsize=900,700 --colorscheme=Tomorrow -o a1.png assembly_generated.scad
+        xvfb-run -a openscad --camera=0,0,5,58,0,215,330 --imgsize=900,700 --colorscheme=Tomorrow -o a2.png assembly_generated.scad
+    """
+    import matplotlib.image as mpimg
+
+    fig = plt.figure(figsize=(16, 8.6))
+    gs = fig.add_gridspec(1, len(renders) + 1, width_ratios=[1] * len(renders) + [0.62])
+    for i, (path, title) in enumerate(renders):
+        ax = fig.add_subplot(gs[0, i])
+        ax.imshow(mpimg.imread(path))
+        ax.set_title(title, fontsize=12)
+        ax.axis("off")
+    ax = fig.add_subplot(gs[0, len(renders)])
+    ax.axis("off")
+    ax.text(0, 0.98, "色の見方", fontsize=13, va="top", transform=ax.transAxes)
+    for k, (c, name) in enumerate(SCAD_COLORS):
+        y = 0.92 - k * 0.058
+        ax.add_patch(patches.Rectangle((0, y - 0.018), 0.08, 0.036, transform=ax.transAxes, facecolor=c,
+                                       edgecolor="k", lw=0.5))
+        ax.text(0.11, y, name, transform=ax.transAxes, va="center", fontsize=11)
+    ax.text(0, 0.02, "モータ（2 個）はブリッジの下、\n中央の溝の中に隠れている。\n白い板は区画の中心にいるときの前の壁。",
+            transform=ax.transAxes, fontsize=10, va="bottom")
+    fig.suptitle("Jansen Mouse 立体図", fontsize=15)
+    fig.tight_layout()
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "overview_3d.png"
+    fig.savefig(path, dpi=100)
+    plt.close(fig)
+    return path

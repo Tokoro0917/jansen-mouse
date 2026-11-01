@@ -114,6 +114,7 @@ struct Rig {
 };
 
 static SimRobot* g_trace_robot = nullptr;
+static mouse::Motion* g_trace_motion = nullptr;
 static const Maze* g_trace_truth = nullptr;
 static bool g_trace = getenv("SIM_TRACE") != nullptr;  // 区画ごとの走行ログ（不一致・衝突のみ）
 static void traceCell(Pos pos, Dir h, const WallObservation& seen, const mouse::WallReading& raw) {
@@ -124,8 +125,8 @@ static void traceCell(Pos pos, Dir h, const WallObservation& seen, const mouse::
   const int coll = g_trace_robot->collisions() - last_coll;
   last_coll = g_trace_robot->collisions();
   if (getenv("TRACE_ALL") == nullptr && !coll && seen.left == tl && seen.front == tf && seen.right == tr) return;
-  printf("  coll+%d (%d,%d) h%d pose(%.0f,%.0f,%.1f) cell(%d,%d) seen %d%d%d truth %d%d%d raw FL%d L%d R%d FR%d%s\n",
-         coll, pos.x, pos.y, h, g_trace_robot->x(), g_trace_robot->y(), g_trace_robot->headingDeg(),
+  printf("  edges%d coll+%d (%d,%d) h%d pose(%.0f,%.0f,%.1f) cell(%d,%d) seen %d%d%d truth %d%d%d raw FL%d L%d R%d FR%d%s\n",
+         g_trace_motion ? g_trace_motion->wallEdgeCorrections() : -1, coll, pos.x, pos.y, h, g_trace_robot->x(), g_trace_robot->y(), g_trace_robot->headingDeg(),
          g_trace_robot->cellX(), g_trace_robot->cellY(), seen.left, seen.front, seen.right, tl, tf, tr,
          raw.fl, raw.l, raw.r, raw.fr,
          (seen.left != tl || seen.front != tf || seen.right != tr) ? "  <-- MISMATCH" : "");
@@ -192,6 +193,7 @@ static void runFullMission(uint32_t seed, float travel_scale) {
   p.seed = seed;
   Rig rig(truth, p, g_tuning);
   g_trace_robot = &rig.robot;
+  g_trace_motion = &rig.motion;
   g_trace_truth = &truth;
   rig.runner.on_cell = traceCell;
 

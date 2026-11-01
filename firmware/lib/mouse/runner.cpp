@@ -28,10 +28,15 @@ void Runner::doTurn(maze::Move mv) {
 
 namespace {
 // 次の区画の中心のこの距離手前で、その区画の壁を先読みする。
-// 探索速度からの減速距離（60^2 / (2 x 150) = 12 mm）より長くして、直進を続けるなら減速を始める前に延長する。
-// この位置でも左右センサ（機体中心の 35 mm 前）は次の区画の横壁の範囲にあり、前壁も十分見える。
+// 直進を続けるなら、ここで延長する。探索速度 90 mm/s の減速距離（90^2 / (2 x 150) = 27 mm）より短いので、
+// 延長する時点で 77 mm/s 程度まで減速しかけているが、Trapezoid::extend はそこから再び加速する。
+// 前壁はこの位置で見る。横壁はもっと手前で読んでおいたものを使う（下の kSideLookAheadMm）。
 constexpr float kLookaheadMm = 20.0f;
 constexpr int kSettleMs = 150;  // 停止後、歩行振動が収まりセンサ値が落ち着くまでの待ち
+// 横壁は、左右センサの光が次の区画の横壁の真ん中に当たる瞬間（機体中心が次の区画中心の kSideLookAheadMm 手前）に読む。
+// 光は機体中心より前の壁に当たるので、区画中心や先読み位置で読むと、前後に行き過ぎたときに
+// その次の区画の壁を見てしまう。通過時に読めば、前後の誤差に ±78 mm まで耐える。
+constexpr int kSideSampleTicks = 10;  // この tick 数の平均をとる（約 1 mm の区間）
 }  // namespace
 
 // 探索: 直進が続くあいだは止まらずに次の区画の壁を先読みし、旋回するときだけ区画中心で止まる。
@@ -70,14 +75,28 @@ RunResult Runner::explore(maze::Explorer* ex, bool stop_when_determined) {
       planned = cfg::kCellMm;
       moving = true;
     }
-    // 次の区画の中心の手前まで進んだら、その区画に入ったとみなして壁を先読みする
-    while (motion_.busy() && motion_.straightProgressMm() < planned - kLookaheadMm) io_.delayMs(1);
+    // 次の区画の中心の手前まで進む。途中、光が次の区画の横壁の真ん中に当たる所で横壁を読む
+    long sum_l = 0, sum_r = 0;
+    int n = 0;
+    while (motion_.busy() && motion_.straightProgressMm() < planned - kLookaheadMm) {
+      if (n < kSideSampleTicks && motion_.straightProgressMm() >= planned - cfg::kSideLookAheadMm) {
+        const WallReading w = io_.wallSensors();
+        sum_l += w.l;
+        sum_r += w.r;
+        ++n;
+      }
+      io_.delayMs(1);
+    }
     ex->applyForward();
     if (!motion_.busy()) {  // 先読み位置より前で止まった（前壁で停止した等）
       moving = false;
       io_.delayMs(kSettleMs);
     }
     seen = senseWalls();
+    if (n > 0) {  // 前進の途中で読んだ横壁を使う
+      seen.left = sum_l / n > tuning_.thr_side;
+      seen.right = sum_r / n > tuning_.thr_side;
+    }
     if (io_.batteryVolts() < cfg::kBatteryCutoffV) {
       motion_.stop();
       return RunResult::kLowBattery;
