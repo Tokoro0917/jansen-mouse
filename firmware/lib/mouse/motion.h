@@ -21,6 +21,7 @@ class Motion {
 
   // 以下はメインループから呼ぶ非ブロッキング指令
   void straight(float mm, float v_max, bool wall_centering);
+  void extendStraight(float mm);  // 走行中の直進を減速せずに延ばす
   float straightProgressMm() const;  // 今の直進で進んだ距離（壁切れ補正込み）
   void turn(float deg);  // 反時計回り（左）が正
   void alignFront();     // 前壁を使って距離と向きを補正

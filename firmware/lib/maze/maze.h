@@ -81,6 +81,10 @@ struct Step {
   uint8_t cells;  // kStraight のときの区画数
 };
 
+// 最短経路が確定したか: 未知の壁を「無い」とみなした最短距離と、既知の壁だけの最短距離が等しい。
+// 確定していれば、これ以上探索しても最短走行の経路は短くならない。
+bool shortestPathDetermined(const Maze& m, Pos start, const Pos* goals, int n_goals);
+
 // 既知の壁だけを使って start -> goals の動作列を作る。
 // 返り値: 書き込んだ Step 数（到達不能なら -1）
 int buildFastPath(const Maze& m, Pos start, Dir heading, const Pos* goals, int n_goals,

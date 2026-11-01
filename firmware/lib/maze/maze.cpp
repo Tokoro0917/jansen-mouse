@@ -87,6 +87,13 @@ static bool isGoal(Pos p, const Pos* goals, int n_goals) {
   return false;
 }
 
+bool shortestPathDetermined(const Maze& m, Pos start, const Pos* goals, int n_goals) {
+  Planner optimistic, known;
+  optimistic.flood(m, goals, n_goals, FloodMode::kSearch);
+  known.flood(m, goals, n_goals, FloodMode::kKnownOnly);
+  return known.distance(start) != kInf && known.distance(start) == optimistic.distance(start);
+}
+
 int buildFastPath(const Maze& m, Pos start, Dir heading, const Pos* goals, int n_goals,
                   Step* out, int max_steps) {
   Planner planner;

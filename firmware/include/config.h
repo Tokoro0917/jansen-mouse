@@ -36,7 +36,7 @@ constexpr float kMmPerCrankRev = mech::kTravelMmPerRev * kTravelCorrection;
 constexpr float kControlHz = 1000.0f;
 constexpr float kDt = 1.0f / kControlHz;
 
-constexpr float kSearchSpeed = 60.0f;    // [mm/s] 探索 (≈1.05 rev/s)
+constexpr float kSearchSpeed = 90.0f;    // [mm/s] 探索 (≈1.6 rev/s)。速度ごとの比較は docs/design.md
 constexpr float kFastSpeed = 90.0f;      // [mm/s] 最短走行 (≈1.6 rev/s)
 constexpr float kAccel = 150.0f;         // [mm/s^2]
 constexpr float kTurnRate = 180.0f;      // [deg/s]

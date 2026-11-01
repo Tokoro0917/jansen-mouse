@@ -5,7 +5,7 @@
 namespace control {
 
 // 台形速度プロファイル。距離・角度どちらにも使う（単位は呼び出し側で統一）。
-// 終端速度 0 で停止する前提（区画中心で止まる歩行マウス向け）。
+// 終端速度 0 で停止する前提。走行中に extend() で目標を延ばせば、減速せずに走り続ける。
 class Trapezoid {
  public:
   void start(float distance, float v_max, float accel) {
@@ -16,6 +16,12 @@ class Trapezoid {
     pos_ = 0.0f;
     vel_ = 0.0f;
     done_ = total_ <= 0.0f;
+  }
+
+  // 目標距離を延ばす（start() と同じ向きに delta の大きさだけ）。
+  void extend(float delta) {
+    total_ += fabsf(delta);
+    done_ = pos_ >= total_;
   }
 
   // dt 秒進めて現在の目標速度（符号つき）を返す。
