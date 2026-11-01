@@ -71,36 +71,36 @@ int32_t encoderRight() { return enc_r; }
 
 // ---------------- 壁センサ ----------------
 static volatile WallReading wall{0, 0, 0, 0};
-static bool sample_front = true;
+static bool sample_flr = true;  // true: FL と R、false: L と FR
 
 void wallSensorsBegin() {
-  pinMode(pins::kPinIrLedFront, OUTPUT);
-  pinMode(pins::kPinIrLedSide, OUTPUT);
-  digitalWrite(pins::kPinIrLedFront, LOW);
-  digitalWrite(pins::kPinIrLedSide, LOW);
+  pinMode(pins::kPinIrLedFLR, OUTPUT);
+  pinMode(pins::kPinIrLedLFR, OUTPUT);
+  digitalWrite(pins::kPinIrLedFLR, LOW);
+  digitalWrite(pins::kPinIrLedLFR, LOW);
   analogReadResolution(12);
 }
 
 void wallSensorsSample() {
-  // 外乱光を打ち消すため、消灯時と点灯時の差分を取る
-  const uint32_t led = sample_front ? pins::kPinIrLedFront : pins::kPinIrLedSide;
-  const uint32_t a = sample_front ? pins::kPinSensFL : pins::kPinSensL;
-  const uint32_t b = sample_front ? pins::kPinSensFR : pins::kPinSensR;
+  // 外乱光を打ち消すため、消灯時と点灯時の差分を取る。対角の 2 個ずつ（FL・R / L・FR）交互に光らせる
+  const uint32_t led = sample_flr ? pins::kPinIrLedFLR : pins::kPinIrLedLFR;
+  const uint32_t a = sample_flr ? pins::kPinSensFL : pins::kPinSensL;
+  const uint32_t b = sample_flr ? pins::kPinSensR : pins::kPinSensFR;
   const int off_a = analogRead(a);
   const int off_b = analogRead(b);
   digitalWrite(led, HIGH);
-  delayMicroseconds(20);  // フォトトランジスタの立ち上がり待ち
+  delayMicroseconds(5);  // NJU6080 の立ち上がり（約 2.5 µs）+ 受光アンプの整定（約 2 µs）
   const int on_a = analogRead(a);
   const int on_b = analogRead(b);
   digitalWrite(led, LOW);
-  if (sample_front) {
+  if (sample_flr) {
     wall.fl = on_a - off_a;
-    wall.fr = on_b - off_b;
+    wall.r = on_b - off_b;
   } else {
     wall.l = on_a - off_a;
-    wall.r = on_b - off_b;
+    wall.fr = on_b - off_b;
   }
-  sample_front = !sample_front;
+  sample_flr = !sample_flr;
 }
 
 WallReading wallSensors() {

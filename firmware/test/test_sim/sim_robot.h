@@ -18,9 +18,6 @@
 #include "motion.h"
 #include "mouse_io.h"
 
-#ifndef SIDE_ANGLE
-#define SIDE_ANGLE 90  // 左右センサの向き [deg]（-DSIDE_ANGLE=60 で斜め前向きと比較できる）
-#endif
 
 namespace sim {
 
@@ -46,14 +43,15 @@ class SimRobot : public mouse::MouseIO {
   // 機体外形（脚の掃引範囲）とセンサ配置 [mm]（前 = +f, 左 = +l）
   static constexpr float kHalfLength = mech::kBodyLengthMm / 2;
   static constexpr float kHalfWidth = mech::kBodyWidthMm / 2;
+  // r0: センサの感度（ADC = 4000 x (r0 / 距離)^2）。実機では LED の電流・アンプの帰還抵抗で、区画中央で飽和しないように合わせる
   struct Sensor {
-    float f, l, angle_deg;
+    float f, l, angle_deg, r0;
   };
   static constexpr Sensor kSensors[4] = {
-      {45, 20, 0},     // FL
-      {cfg::kSideSensorForwardMm, 15, SIDE_ANGLE},    // L
-      {cfg::kSideSensorForwardMm, -15, -SIDE_ANGLE},  // R
-      {45, -20, 0},    // FR
+      {mech::kFrontSensorForwardMm, mech::kFrontSensorLateralMm, 0, 30},     // FL
+      {mech::kSideSensorForwardMm, mech::kSideSensorLateralMm, mech::kSideSensorAngleDeg, 30},    // L
+      {mech::kSideSensorForwardMm, -mech::kSideSensorLateralMm, -mech::kSideSensorAngleDeg, 30},  // R
+      {mech::kFrontSensorForwardMm, -mech::kFrontSensorLateralMm, 0, 30},    // FR
   };
 
   SimRobot(const maze::Maze& truth, SimParams p) : truth_(truth), p_(p), rng_(p.seed) {
@@ -77,13 +75,13 @@ class SimRobot : public mouse::MouseIO {
   int32_t encoderLeft() const override { return counts(phi_l_); }
   int32_t encoderRight() const override { return counts(phi_r_); }
   void wallSensorsSample() override {
-    // 実機と同じく前方 / 側方を交互に更新
+    // 実機と同じく対角の 2 個ずつ（FL・R / L・FR）交互に更新
     if (sample_front_) {
       reading_.fl = sense(0);
-      reading_.fr = sense(3);
+      reading_.r = sense(2);
     } else {
       reading_.l = sense(1);
-      reading_.r = sense(2);
+      reading_.fr = sense(3);
     }
     sample_front_ = !sample_front_;
   }
@@ -200,7 +198,7 @@ class SimRobot : public mouse::MouseIO {
     const int n = nearbyRects(rects, 160);
     float d = 1e9f;
     for (int i = 0; i < n; ++i) d = fminf(d, rayRect(ox, oy, cosf(a), sinf(a), rects[i]));
-    const float r0 = 30.0f;
+    const float r0 = s.r0;
     float v = 4000.0f * (r0 / fmaxf(d, 1.0f)) * (r0 / fmaxf(d, 1.0f));
     v = fminf(v, 4000.0f) + p_.sensor_noise * gauss();
     return static_cast<int>(fmaxf(v, 0.0f));

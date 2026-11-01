@@ -7,6 +7,7 @@
     python -m jansen.cli scad  -o ../cad/links_generated.scad
     python -m jansen.cli footprint              # 縮尺・スロー数ごとの機体外形の比較
     python -m jansen.cli assembly -o ../cad/assembly_generated.scad --theta 30
+    python -m jansen.cli body                   # 機体の部品配置の検証（干渉・センサの見通し・重量）
 """
 from __future__ import annotations
 
@@ -17,12 +18,14 @@ import numpy as np
 from pathlib import Path
 
 from .assembly import BuildParams, PART_JOINTS, footprint
+from .body import (HOLDER_D, HOLDER_W, SENSOR_LAYOUT, holder_dims, side_sensor_geometry,
+                   default_design, evaluate, leg_obstacles, sensor_ray)
 from .drive import crank_torque, drive_profile, spin_turn_torque
 from .gait import standard_side, support_analysis
 from .linkage import HOLY_NUMBERS, MOVING_LINKS, JansenLeg, gait_metrics
 
-DEFAULT_SCALE = 0.45   # [mm/unit] 超信地旋回できる外形から決定（docs/design.md 参照）
-DEFAULT_THROWS = 2     # 片側のクランクスロー数（脚は 2 倍）
+DEFAULT_SCALE = 0.40   # [mm/unit] 超信地旋回できる外形から決定（docs/design.md 参照）
+DEFAULT_THROWS = 3     # 片側のクランクスロー数（脚は 2 倍）。片側 6 脚、全体で 12 脚
 CENTER_WIDTH = 26.0    # 中央部（直交出力の N20 ウォームギヤモータ 2 個を並べた幅）[mm]
 CORRIDOR_MM = 168.0    # 区画 180 mm - 壁厚 12 mm
 CELL_MM = 180.0
@@ -85,8 +88,7 @@ def build_report(scale: float, throws: int) -> str:
         "## 機体外形（干渉チェック済みの積層から算出）",
         f"- 全長（脚の掃引範囲）: {fp.length:.1f} mm",
         f"- 全幅: {fp.width:.1f} mm（中央部 {CENTER_WIDTH:.0f} mm を含む）",
-        f"- 対角長（超信地旋回の掃引直径）: {fp.diagonal:.1f} mm"
-        f" / 通路幅 {CORRIDOR_MM:.0f} mm（余裕 {CORRIDOR_MM - fp.diagonal:.1f} mm）",
+        f"- 外接長方形の対角長（参考。旋回半径は下の「機体の部品配置」）: {fp.diagonal:.1f} mm",
         f"- 脚モジュール厚: {lay.thickness:.1f} mm"
         f"（脚 {lay.n_layers} 層 + クランクウェブ 2 枚 + フレーム板 1 枚,"
         f" 板厚 {BUILD.plate} mm, ワッシャ {BUILD.washer} mm）",
@@ -107,6 +109,7 @@ def build_report(scale: float, throws: int) -> str:
             f"{j} = {'層 N+1 側' if s == 'high' else '層 0 側'}のフレーム板"
             for j, s in lay.fixed_pin_side.items()),
         "",
+        *build_body_section(scale, throws),
         "## リンク長 [mm]（穴中心間距離）",
         "",
         "| link | holy number | length |",
@@ -116,6 +119,41 @@ def build_report(scale: float, throws: int) -> str:
         kind = "" if name in MOVING_LINKS else "（フレーム）"
         lines.append(f"| {name}{kind} | {HOLY_NUMBERS[name]} | {leg.length(name):.2f} |")
     return "\n".join(lines) + "\n"
+
+
+def build_body_section(scale: float, throws: int) -> list[str]:
+    d = default_design(scale, throws, CENTER_WIDTH, BUILD)
+    rep = evaluate(d)
+    ok = lambda xs: "なし" if not xs else "、".join(xs)  # noqa: E731
+    lines = [
+        "## 機体の部品配置",
+        "",
+        f"- 部品と脚・フレームの干渉: {ok(rep.interference)}",
+        f"- 超信地旋回の半径: {rep.turning_radius:.1f} mm（{rep.turning_limiter}）"
+        f" / 壁まで {84.0:.0f} mm（余裕 {84.0 - rep.turning_radius:.1f} mm）",
+        f"- 部品の最低地上高: {rep.min_ground_clearance:.1f} mm",
+        f"- 重量: {rep.total_mass:.0f} g、重心 (x, y, z) = "
+        f"({rep.cog[0]:.1f}, {rep.cog[1]:.1f}, {rep.cog[2]:.1f}) mm",
+        f"- 横方向の最小支持幅（片側）: {rep.support_half_width:.1f} mm → 転倒角 {rep.tip_angle_deg:.0f}°",
+        "",
+        "| 部品 | x [mm] | y [mm] | z [mm] | 重量 [g] | 備考 |",
+        "|---|---|---|---|---|---|",
+    ]
+    for c in d.components:
+        lines.append(f"| {c.name} | {c.x[0]:.0f}〜{c.x[1]:.0f} | {c.y[0]:.1f}〜{c.y[1]:.1f} | "
+                     f"{c.z[0]:.1f}〜{c.z[1]:.1f} | {c.mass_g:.1f} | {c.note} |")
+    lines += ["", "| 壁センサ | 位置 (x, y, z) [mm] | 向き | 光路を遮るもの |", "|---|---|---|---|"]
+    for sn in d.sensors:
+        x, y, z = sn.origin
+        lines.append(f"| {sn.name} | ({x:.1f}, {y:.1f}, {z:.1f}) | {sn.direction_deg:+.0f}° | "
+                     f"{ok(rep.blockers[sn.name])} |")
+    for name, b in rep.legacy_blockers.items():
+        lines.append(f"| {name} | （以前の配置） | | {ok(b)} |")
+    lines += ["", "| 重量の内訳 | g |", "|---|---|"]
+    for k, v in rep.mass_items.items():
+        lines.append(f"| {k} | {v:.1f} |")
+    lines += [f"| **合計** | **{rep.total_mass:.0f}** |", ""]
+    return lines
 
 
 def cmd_plot(scale: float, throws: int, out: Path) -> None:
@@ -185,6 +223,8 @@ def build_header(scale: float, throws: int) -> str:
     g = gait_metrics(leg)
     fp = footprint(scale, throws, CENTER_WIDTH, BUILD)
     pr = drive_profile(leg, standard_side(throws))
+    sensors = {sn.name: sn for sn in default_design(scale, throws, CENTER_WIDTH, BUILD).sensors}
+    look, beam = side_sensor_geometry()
     idx = np.linspace(0, len(pr.thetas), SPEED_TABLE_N, endpoint=False).astype(int)
     vals = [f"{v:.3f}f" for v in pr.body_speed[idx]]
     table = "\n".join("    " + ", ".join(vals[i:i + 8]) + "," for i in range(0, len(vals), 8))
@@ -202,6 +242,18 @@ constexpr float kBodyLengthMm = {fp.length:.1f}f;
 constexpr float kBodyWidthMm = {fp.width:.1f}f;
 constexpr float kLegGroupPitchMm = {fp.width - throws * fp.layout.thickness - BUILD.plate:.1f}f;  // 左右脚群の中心間距離
 
+// 壁センサの位置（機体中心 = クランク軸の真下から。x 前, y 左）。脚の掃引域を避けた配置（jansen/body.py）
+// 4 本とも基板の前端より内側の裏に下げる（前に突き出さない）
+constexpr float kFrontSensorForwardMm = {sensors["FL"].origin[0]:.1f}f;  // FL / FR: 中央の溝の端、真正面向き
+constexpr float kFrontSensorLateralMm = {sensors["FL"].origin[1]:.1f}f;
+constexpr float kSideSensorForwardMm = {sensors["L"].origin[0]:.1f}f;   // L / R: 内側から斜め前向き
+constexpr float kSideSensorLateralMm = {sensors["L"].origin[1]:.1f}f;
+constexpr float kSideSensorAngleDeg = {sensors["L"].direction_deg:.1f}f;  // 前 = 0, 真横 = 90
+constexpr float kSideSensorSin = {math.sin(math.radians(sensors["L"].direction_deg)):.4f}f;
+// 区画中央にいるとき、左右センサの光が横の壁に当たる点の前方距離と、そこまでの光の長さ
+constexpr float kSideLookAheadMm = {look:.1f}f;
+constexpr float kSideBeamToWallMm = {beam:.1f}f;
+
 // 片側の胴体速度 / クランク角速度 [mm/rad] をクランク 1 回転で {SPEED_TABLE_N} 等分した表
 // （シミュレーション用。クランク角 0 は組立時の基準位相）
 constexpr int kBodySpeedTableSize = {SPEED_TABLE_N};
@@ -218,6 +270,26 @@ def build_scad(scale: float, throws: int) -> str:
     body = "\n".join(f"L_{n} = {leg.length(n):.3f};" for n in sorted(HOLY_NUMBERS))
     layers = "\n".join(f"LAYER_{n.replace(chr(39), '_R')} = {z};"
                         for n, z in sorted(lay.layers.items()))
+    d = default_design(scale, throws, CENTER_WIDTH, BUILD)
+    comp = {c.name: c for c in d.components}
+
+    def rng(name, axis):
+        lo, hi = getattr(comp[name], axis)
+        return f"[{lo:.2f}, {hi:.2f}]"
+
+    body = body + "\n// 機体の部品配置（機体座標: x 前, y 左, z 上。jansen/body.py）\n" + "\n".join([
+        f"CRANK_H = {-gait_metrics(leg).ground_y:.2f};",
+        f"BRIDGE_X = {rng('bridge', 'x')}; BRIDGE_Y = {rng('bridge', 'y')}; BRIDGE_Z = {rng('bridge', 'z')};",
+        f"DECK_Z = {rng('deck', 'z')};",
+
+        "SENSORS = [" + ", ".join(f"[{x:.2f}, {y:.2f}, {a:.1f}]" for _, (x, y), a in SENSOR_LAYOUT)
+        + "];  // FL, FR, L, R: ホルダの前の面の真ん中 (x, y) と光の向き",
+        "HOLDER = [{:.2f}, {:.2f}, {:.2f}, {:.2f}, {:.2f}];".format(HOLDER_W, HOLDER_D, *holder_dims(comp["deck"].z[0])) +
+        "  // 幅, 奥行き, 高さ, 発光の穴, 受光の穴（基板の下面から）",
+        f"MOTOR_X = {rng('motor_L', 'x')}; MOTOR_Z = {rng('motor_L', 'z')};",
+        f"DECK_X = {rng('deck', 'x')}; DECK_Y = {rng('deck', 'y')};",
+
+    ])
     return ("// 自動生成: python -m jansen.cli scad （手で編集しないこと）\n"
             f"SCALE = {scale};\nTHROWS = {throws};\n"
             f"PLATE = {BUILD.plate};\nWASHER = {BUILD.washer};\nLINK_W = {BUILD.link_width};\n"
@@ -275,25 +347,54 @@ def build_assembly(scale: float, throws: int, theta_deg: float) -> str:
     out.append(f"color(\"White\", 0.3) translate([-90, {ground - 1:.2f}, -90]) "
                f"cube([180, 1, 180]);  // 床（1 区画分）")
     out.append("}")
+    # 機体の部品（機体座標 x 前, y 左, z 上 → 起こした後の座標: X = x, Y = -y, Z = z - クランク高さ）
+    d = default_design(scale, throws, CENTER_WIDTH, BUILD)
+    h = -ground
+    out.append("// 機体の部品（jansen/body.py の default_design）")
+    out.append(f"color(\"LightSteelBlue\") mirror([0, 1, 0]) translate([0, 0, {-h:.2f}]) {{ bridge(); motor_clamp(); }}")
+    out.append(f"color(\"Black\") mirror([0, 1, 0]) translate([0, 0, {-h:.2f}]) placed_holders();")
+    for c in d.components:
+        if c.name == "bridge" or c.name.startswith("holder_"):
+            continue  # 実際の形状（bridge()・sensor_holder()）で描く
+        out.append(f"color(\"{c.color}\") translate([{c.x[0]:.2f}, {-c.y[1]:.2f}, {c.z[0] - h:.2f}]) "
+                   f"cube([{c.x[1] - c.x[0]:.2f}, {c.y[1] - c.y[0]:.2f}, {c.z[1] - c.z[0]:.2f}]);  // {c.name}")
+    for sn in d.sensors:
+        (x0, y0), (x1, y1) = sensor_ray(sn)
+        z = sn.origin[2] - h
+        out.append(f"color(\"Red\", 0.6) hull() {{ translate([{x0:.2f}, {-y0:.2f}, {z:.2f}]) sphere(0.8, $fn=8); "
+                   f"translate([{x1:.2f}, {-y1:.2f}, {z:.2f}]) sphere(0.8, $fn=8); }}  // 壁センサ {sn.name} の光路")
+    out.append(f"color(\"White\", 0.25) translate([84, -90, {-h:.2f}]) cube([12, 180, 50]);  // 前壁（区画中心にいるとき）")
     return "\n".join(out) + "\n"
 
 
 def build_footprint_table(center_width: float) -> str:
-    rows = ["| 片側スロー数 | 縮尺 | 全長 | 全幅 | 対角長 | 旋回余裕 | 1 回転の前進量 |",
-            "|---|---|---|---|---|---|---|"]
-    for throws in (2, 3):
-        for scale in (0.40, 0.45, 0.50, 0.55):
-            fp = footprint(scale, throws, center_width, BUILD)
-            pr = drive_profile(JansenLeg(scale=scale), standard_side(throws), n=360)
-            rows.append(f"| {throws} | {scale:.2f} | {fp.length:.1f} | {fp.width:.1f} | "
-                        f"{fp.diagonal:.1f} | {CORRIDOR_MM - fp.diagonal:+.1f} | {pr.travel_per_rev:.1f} |")
+    """脚の数・縮尺・板厚ごとの外形。通路に収まるかは、実際の脚の形から求めた超信地旋回の半径で判断する。"""
+    from dataclasses import replace
+
+    from .body import BodyDesign, leg_obstacles, turning_radius
+
+    rows = ["| 脚の数 | 縮尺 | 板厚 | 全長 | 全幅 | 旋回半径 | 壁までの余裕 | 胴体の上下動 | 1 回転の前進量 |",
+            "|---|---|---|---|---|---|---|---|---|"]
+    for throws in (2, 3, 4):
+        for scale in (0.35, 0.40, 0.45):
+            for plate in (2.0, 1.5):
+                bp = replace(BUILD, plate=plate, samples=36)
+                obs, _ = leg_obstacles(scale, throws, center_width, bp)
+                radius, _ = turning_radius(BodyDesign(scale, throws, center_width, bp), obs)
+                length = max(max(abs(o.poly.bounds[0]), abs(o.poly.bounds[2])) for o in obs) * 2
+                width = 2 * max(abs(o.y1) for o in obs)
+                leg = JansenLeg(scale=scale)
+                bob = support_analysis(leg, standard_side(throws)).body_bob
+                travel = drive_profile(leg, standard_side(throws), n=360).travel_per_rev
+                rows.append(f"| {4 * throws} | {scale:.2f} | {plate:.1f} | {length:.1f} | {width:.1f} | {radius:.1f} | "
+                            f"{84.0 - radius:+.1f} | {bob:.2f} | {travel:.1f} |")
     return "\n".join(rows) + "\n"
 
 
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="jansen")
     p.add_argument("command",
-                   choices=["report", "plot", "anim", "header", "scad", "footprint", "assembly"])
+                   choices=["report", "plot", "anim", "header", "scad", "footprint", "assembly", "body", "drawing"])
     p.add_argument("--scale", type=float, default=DEFAULT_SCALE)
     p.add_argument("--throws", type=int, default=DEFAULT_THROWS)
     p.add_argument("--theta", type=float, default=30.0, help="assembly のクランク角 [deg]")
@@ -312,6 +413,11 @@ def main(argv=None) -> None:
     elif args.command == "header":
         text = build_header(args.scale, args.throws)
         (args.out.write_text(text, encoding="utf-8") if args.out else print(text, end=""))
+    elif args.command == "drawing":
+        from .drawing import three_views
+        print(three_views(args.scale, args.throws, CENTER_WIDTH, BUILD, args.out or Path("out")))
+    elif args.command == "body":
+        print("\n".join(build_body_section(args.scale, args.throws)))
     elif args.command in ("scad", "footprint", "assembly"):
         text = {"scad": lambda: build_scad(args.scale, args.throws),
                 "footprint": lambda: build_footprint_table(CENTER_WIDTH),

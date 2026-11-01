@@ -36,6 +36,7 @@ class Runner {
  private:
   RunResult explore(maze::Explorer* ex);
   void doTurn(maze::Move mv);
+  bool forwardOneCell(bool* left, bool* right);
 
   MouseIO& io_;
   Motion& motion_;
