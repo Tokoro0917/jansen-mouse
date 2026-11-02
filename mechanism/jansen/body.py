@@ -31,6 +31,7 @@ HOLE_PITCH = 4.4                                 # 発光と受光の穴の間�
 HOLDER_BOTTOM_WALL = 2.3                         # 発光の穴の下の肉厚 [mm]
 BEAM_Z = 42.0                                    # 光の高さ（発光と受光の中間）[mm]。壁の上端 50 mm より 8 mm 下
 STEEL_DENSITY = 7.85e-3
+MOTOR_MASS_G = 15.0   # N20 ウォームギヤ 6 V B45 42:1（カタログ値 約 15 g）
 
 
 @dataclass
@@ -135,15 +136,15 @@ def default_design(scale: float, throws: int, center_width: float, bp: BuildPara
     d.components = [
         # 中央の溝にモータ 2 個を横に並べる。出力軸（直交）がクランク軸と同軸で、内側のフレーム板を貫いて
         # 最初のクランクウェブに直接入る。本体は後ろ向きに伸ばし、前方は壁センサのために空ける。
-        Component("motor_L", motor_x, (0.5, cw - 0.5), (h - 7, h + 7), 12.0, "Silver",
-                  "N20 ウォームギヤモータ + エンコーダ（外形 12 x 14 x 41 を仮定）"),
-        Component("motor_R", motor_x, (-(cw - 0.5), -0.5), (h - 7, h + 7), 12.0, "Silver",
+        Component("motor_L", motor_x, (0.5, cw - 0.5), (h - 7, h + 7), MOTOR_MASS_G, "Silver",
+                  "N20 ウォームギヤ 6 V B45 42:1 + 磁気エンコーダ（約 15 g。外形 12 x 14 x 41 は仮定、図面で確認）"),
+        Component("motor_R", motor_x, (-(cw - 0.5), -0.5), (h - 7, h + 7), MOTOR_MASS_G, "Silver",
                   "同上"),
         # 基板（1 枚）: 脚とフレーム板より上。壁センサは前端の裏に下げる（前に突き出さない）
         Component("deck", (-40, BOARD_FRONT_X), (-30, 30), (deck_z, top),
                   (BOARD_FRONT_X + 40) * 60 * 1.0 * FR4_DENSITY + 2.0, "DarkGreen",
                   "基板 80 x 60 x t1.0（壁センサの回路を含む部品 約 2 g）。ブリッジの上面にネジ止め"),
-        Component("mcu", (-26.5, 26.5), (9, 30), (top, top + 4), 4.5, "Navy", "Black Pill（ピンヘッダなし、直付け）"),
+        Component("mcu", (-13.0, 40.0), (9, 30), (top, top + 4), 4.5, "Navy", "Black Pill（ピンヘッダなし、直付け）"),
         Component("imu", (27, 37), (-28, -18), (top, top + 1), 1.0, "Purple", "ICM-20602 基板"),
         Component("driver", (15, 25), (-28, -18), (top, top + 2), 1.0, "Maroon", "DRV8835 基板"),
         # ブリッジ（3D プリント）: 左右の内側フレーム板をタイロッドでつなぎ、モータを上から押さえ、
@@ -401,7 +402,7 @@ def evaluate(d: BodyDesign, density: float = 1.41e-3) -> BodyReport:
     sx = sum(c.mass_g * c.center()[0] for c in d.components)
     sy = sum(c.mass_g * c.center()[1] for c in d.components)
     sz = sum(c.mass_g * c.center()[2] for c in d.components) + legs_mass * h
-    cog = (sx / total, sy / total, sz / total)
+    cog = tuple(round(c, 2) + 0.0 for c in (sx / total, sy / total, sz / total))  # -0.0 を 0.0 に
     support_half = support_half_width(d)
     tip = math.degrees(math.atan2(support_half - abs(cog[1]), cog[2]))
     return BodyReport(

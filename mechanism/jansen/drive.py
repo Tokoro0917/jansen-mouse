@@ -100,3 +100,30 @@ def spin_turn_torque(profile: DriveProfile, mass_kg: float, tread_mm: float,
     total = (lateral + base) / link_efficiency
     return TorqueEstimate(float(total.max()), float(np.sqrt((total ** 2).mean())),
                           straight.lift_peak, float(lateral.max()))
+
+
+KGF_CM = 98.0665  # 1 kgf·cm [N·mm]
+
+
+@dataclass
+class MotorSpec:
+    """減速後のモータ特性（カタログの 1 点から作る直線のトルク-回転数特性。回転数・停動トルクは電圧に比例）。"""
+
+    name: str
+    ratio: float
+    rated_v: float            # カタログの定格電圧 [V]
+    no_load_rpm: float        # 定格電圧での無負荷回転数（減速後）[rpm]
+    rated_rpm: float          # 定格電圧での定格回転数 [rpm]
+    rated_torque: float       # 定格トルク [N·mm]
+    stall_current: float      # 定格電圧での停動電流 [A]
+    mass_g: float
+
+    @property
+    def stall_torque(self) -> float:
+        """定格電圧での停動トルク [N·mm]（無負荷点と定格点を通る直線から）。"""
+        return self.rated_torque / (1.0 - self.rated_rpm / self.no_load_rpm)
+
+    def rpm_at(self, torque: float, volts: float) -> float:
+        """電圧 volts、負荷トルク torque [N·mm] での回転数 [rpm]（止まるなら 0）。"""
+        k = volts / self.rated_v
+        return max(0.0, self.no_load_rpm * k * (1.0 - torque / (self.stall_torque * k)))
