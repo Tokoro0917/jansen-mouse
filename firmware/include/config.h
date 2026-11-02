@@ -20,7 +20,7 @@ constexpr float kSideBeamSin = mech::kSideSensorSin;
 constexpr float kFrontWallDistMm = 84.0f - mech::kFrontSensorForwardMm;
 constexpr float kFrontSensorSpanMm = 2.0f * mech::kFrontSensorLateralMm;  // FL と FR の左右間隔
 constexpr float kEncoderCountsPerMotorRev = 28.0f;  // 7 極対 x 4 逓倍
-constexpr float kGearRatio = 100.0f;                // ギヤ比（購入したモータに合わせる）
+constexpr float kGearRatio = 42.0f;                 // N20 ウォームギヤ 6 V B45 42:1（docs/hardware.md）
 constexpr float kCountsPerCrankRev = kEncoderCountsPerMotorRev * kGearRatio;
 // 片側の左右モータ取り付け向き補正（前進でカウントが増えるように）
 constexpr int kMotorLSign = 1;
@@ -36,13 +36,13 @@ constexpr float kMmPerCrankRev = mech::kTravelMmPerRev * kTravelCorrection;
 constexpr float kControlHz = 1000.0f;
 constexpr float kDt = 1.0f / kControlHz;
 
-constexpr float kSearchSpeed = 90.0f;    // [mm/s] 探索 (≈1.6 rev/s)。速度ごとの比較は docs/design.md
-constexpr float kFastSpeed = 90.0f;      // [mm/s] 最短走行 (≈1.6 rev/s)
-constexpr float kAccel = 150.0f;         // [mm/s^2]
+constexpr float kSearchSpeed = 90.0f;    // [mm/s] 探索 (≈1.7 rev/s)。速度ごとの比較は docs/design.md
+constexpr float kFastSpeed = 500.0f;     // [mm/s] 最短走行 (≈9.2 rev/s = 551 rpm)。モータの見積りの上限は 2S 公称で 537 mm/s
+constexpr float kAccel = 1500.0f;        // [mm/s^2]。500 mm/s まで 0.33 s・83 mm（足の摩擦の上限 μg ≈ 5900 より十分小さい）
 constexpr float kTurnRate = 180.0f;      // [deg/s]
 constexpr float kTurnAccel = 540.0f;     // [deg/s^2]
 
-constexpr float kMaxCrankRps = 2.5f;  // duty 1.0 でのクランク回転数（150 rpm 品。フィードフォワード用）
+constexpr float kMaxCrankRps = 10.9f;  // duty 1.0 でのクランク回転数（42:1 を 2S 公称 7.4 V で無負荷 654 rpm。フィードフォワード用）
 // クランク回転速度 PID (誤差 rev/s -> PWM duty [-1, 1])
 constexpr float kCrankKp = 0.6f, kCrankKi = 6.0f, kCrankKd = 0.0f;
 // 直進時の距離フィードバック (誤差 mm -> 速度補正 mm/s)

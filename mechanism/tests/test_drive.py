@@ -56,3 +56,32 @@ def test_torque_estimates(profile):
     turn = spin_turn_torque(profile, 0.2, tread_mm=64.2)
     assert turn.peak > walk1.peak  # 旋回は横滑りの分だけ重い
     assert 1.0 < turn.peak < 50.0  # 桁の確認 [N·mm]
+
+
+def test_selected_motor_meets_fast_speed_and_turn():
+    """採用モータ（42:1）は、公称電圧で直進 FAST_SPEED と、安全率込みの旋回トルクで必要回転数を満たす。"""
+    from jansen.cli import BATTERY_V, FAST_SPEED, LINK_EFFICIENCY, MASS_KG, MOTOR, TORQUE_MARGIN, TURN_RATE_DPS
+    from jansen.assembly import footprint
+    from jansen.cli import BUILD, CENTER_WIDTH
+
+    leg = JansenLeg(scale=DEFAULT_SCALE)
+    pr = drive_profile(leg, standard_side(DEFAULT_THROWS))
+    fp = footprint(DEFAULT_SCALE, DEFAULT_THROWS, CENTER_WIDTH, BUILD)
+    tread = fp.width - DEFAULT_THROWS * fp.layout.thickness - BUILD.plate
+    walk = crank_torque(pr, MASS_KG, link_efficiency=LINK_EFFICIENCY).peak
+    turn = spin_turn_torque(pr, MASS_KG, tread, link_efficiency=LINK_EFFICIENCY).peak
+    v_nom = BATTERY_V[0]
+    assert MOTOR.rpm_at(walk, v_nom) / 60 * pr.travel_per_rev >= FAST_SPEED
+    rpm_turn = math.radians(TURN_RATE_DPS) * tread / (2 * pr.body_speed.mean()) / (2 * math.pi) * 60
+    assert MOTOR.rpm_at(turn * TORQUE_MARGIN, v_nom) >= rpm_turn * 1.2
+    assert MOTOR.stall_current * BATTERY_V[1] / MOTOR.rated_v < 1.5  # DRV8835 の 1 ch あたり
+
+
+def test_motor_model_is_linear_in_voltage():
+    from jansen.drive import MotorSpec
+
+    m = MotorSpec("t", 42, 6.0, 500.0, 400.0, 5.0, 0.6, 15.0)
+    assert m.rpm_at(0.0, 6.0) == pytest.approx(500.0)
+    assert m.rpm_at(5.0, 6.0) == pytest.approx(400.0)
+    assert m.rpm_at(0.0, 12.0) == pytest.approx(1000.0)
+    assert m.rpm_at(m.stall_torque * 3, 6.0) == 0.0

@@ -20,7 +20,7 @@ from pathlib import Path
 from .assembly import BuildParams, PART_JOINTS, footprint
 from .body import (HOLDER_D, HOLDER_W, SENSOR_LAYOUT, holder_dims, side_sensor_geometry,
                    default_design, evaluate, leg_obstacles, sensor_ray)
-from .drive import crank_torque, drive_profile, spin_turn_torque
+from .drive import KGF_CM, MotorSpec, crank_torque, drive_profile, spin_turn_torque
 from .gait import standard_side, support_analysis
 from .linkage import HOLY_NUMBERS, MOVING_LINKS, JansenLeg, gait_metrics
 
@@ -34,10 +34,15 @@ BUILD = BuildParams()
 MASS_KG = 0.20
 FOOT_MU = 0.6
 LINK_EFFICIENCY = 0.6
-SEARCH_SPEED = 60.0     # [mm/s]
-FAST_SPEED = 90.0       # [mm/s]
-TURN_RATE_DPS = 180.0   # [deg/s]
+SEARCH_SPEED = 90.0     # [mm/s]（firmware/include/config.h の kSearchSpeed と合わせる）
+FAST_SPEED = 500.0      # [mm/s]（同 kFastSpeed）
+TURN_RATE_DPS = 180.0   # [deg/s]（同 kTurnRate）
 TORQUE_MARGIN = 3.0     # モデルの不確かさを見込んだ安全率
+BATTERY_V = (7.4, 8.4)  # 2S LiPo の公称・満充電 [V]
+# 採用したモータ: N20 ウォームギヤ（直交出力）6 V 高出力巻線（B45）42:1、磁気エンコーダ 7 PPR。
+# カタログ値（NFP-GW12T-N20YZ-EN 系の 6 V B45 42:1）: 無負荷 530 rpm、定格 390 rpm @ 0.06 kgf·cm、停動電流 0.65 A 以下、約 15 g。
+MOTOR = MotorSpec("N20 ウォーム 6 V B45 42:1", ratio=42.0, rated_v=6.0, no_load_rpm=530.0, rated_rpm=390.0,
+                  rated_torque=0.06 * KGF_CM, stall_current=0.65, mass_g=15.0)
 SPEED_TABLE_N = 64      # ファーム / シミュレーション用の胴体速度表の分割数
 
 # 関節図の線分（描画用）
@@ -80,10 +85,30 @@ def build_report(scale: float, throws: int) -> str:
         f"- 超信地旋回時の片側クランクトルク: 最大 {t_turn.peak:.1f} N·mm（実効 {t_turn.rms:.1f}）",
         f"- 必要なクランク回転数: 最短走行 {FAST_SPEED:.0f} mm/s で {rpm_fast:.0f} rpm、"
         f"旋回 {TURN_RATE_DPS:.0f} deg/s で {rpm_turn:.0f} rpm",
-        f"- **モータ（減速後）の要求: {max(rpm_fast, rpm_turn) * 1.2:.0f} rpm 以上で "
-        f"{max(t_walk.peak, t_turn.peak) * TORQUE_MARGIN:.0f} N·mm"
-        f"（{max(t_walk.peak, t_turn.peak) * TORQUE_MARGIN / 98.07:.2f} kgf·cm）以上**"
-        f"（回転数 +20 %、トルク安全率 {TORQUE_MARGIN:.0f}）",
+        f"- モータ（減速後）の要求（動作点ごと。回転数 +20 %）:",
+        f"  - 直進 {FAST_SPEED:.0f} mm/s: {rpm_fast * 1.2:.0f} rpm で {t_walk.peak:.1f} N·mm"
+        f"（安全率 {TORQUE_MARGIN:.0f} なら {t_walk.peak * TORQUE_MARGIN:.1f} N·mm）",
+        f"  - 旋回 {TURN_RATE_DPS:.0f} deg/s: {rpm_turn * 1.2:.0f} rpm で {t_turn.peak:.1f} N·mm"
+        f"（安全率 {TORQUE_MARGIN:.0f} なら {t_turn.peak * TORQUE_MARGIN:.1f} N·mm）",
+        "",
+        f"## 採用したモータ: {MOTOR.name}",
+        f"- カタログ（{MOTOR.rated_v:.0f} V）: 無負荷 {MOTOR.no_load_rpm:.0f} rpm、"
+        f"定格 {MOTOR.rated_rpm:.0f} rpm @ {MOTOR.rated_torque:.1f} N·mm、"
+        f"停動トルク（直線特性から）{MOTOR.stall_torque:.1f} N·mm（{MOTOR.stall_torque / KGF_CM:.2f} kgf·cm）",
+        "",
+        "| 電池の電圧 | 直進の最高速度（見積り / 負荷 3 倍） | 旋回負荷での回転数（負荷 3 倍） | 停動トルク / 旋回の最大トルク |",
+        "|---|---|---|---|",
+    ]
+    for v in BATTERY_V:
+        sp = [MOTOR.rpm_at(t_walk.peak * k, v) / 60 * pr.travel_per_rev for k in (1.0, TORQUE_MARGIN)]
+        lines.append(f"| {v:.1f} V | {sp[0]:.0f} / {sp[1]:.0f} mm/s | "
+                     f"{MOTOR.rpm_at(t_turn.peak * TORQUE_MARGIN, v):.0f} rpm（要求 {rpm_turn * 1.2:.0f}） | "
+                     f"{MOTOR.stall_torque * v / MOTOR.rated_v / t_turn.peak:.1f} 倍 |")
+    lines += [
+        "",
+        f"- 直進の最高速度は、見積りのトルクなら {FAST_SPEED:.0f} mm/s を超えるが、トルクが見積りの 3 倍だと"
+        f"公称電圧（{BATTERY_V[0]:.1f} V）では届かない。摩擦係数・関節効率は試作で測って見直す。",
+        f"- 停動電流は {MOTOR.stall_current * BATTERY_V[1] / MOTOR.rated_v:.2f} A（満充電）で、DRV8835 の 1.5 A / ch 以内。",
         "",
         "## 機体外形（干渉チェック済みの積層から算出）",
         f"- 全長（脚の掃引範囲）: {fp.length:.1f} mm",
