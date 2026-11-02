@@ -325,3 +325,96 @@ def overview_3d(renders: list[tuple[str, str]], out: Path) -> Path:
     fig.savefig(path, dpi=100)
     plt.close(fig)
     return path
+
+
+def joint_diagram(scale: float, bp, out: Path) -> Path:
+    """1 モジュール（前の脚 + 後ろの脚）の関節と、部品を重ねる順番・ピンの範囲の図（docs/images/joints.png）。"""
+    from .assembly import module_parts, solve_layers
+    from .linkage import mirrored
+
+    leg = JansenLeg(scale=scale)
+    lay = solve_layers(leg, bp); parts = module_parts(); N = lay.n_layers
+    th = math.radians(60)
+    front = leg.solve(th); back = mirrored(leg.solve(math.pi - th))
+    pts = {k: v for k, v in front.items()}
+    pts.update({k + "'": v for k, v in back.items() if k not in ("O",)})
+    pts["A'"] = pts["A"]
+    LINK_NAME = {"j": "j", "k": "k", "c": "c", "f": "f", "U": "上三角", "T": "足三角"}
+    COL = {1: "#e07a5f", 2: "#3d85c6", 3: "#6aa84f", 4: "#f1c232", 5: "#8e7cc3"}
+
+    fig, (ax, bx) = plt.subplots(1, 2, figsize=(15, 7.2), gridspec_kw={"width_ratios": [1, 1.25]})
+    fig.suptitle("脚どうしのつなぎ方（1 モジュール = 前の脚 + 後ろの脚。片側に 3 モジュール）", fontsize=14)
+
+    # ---- 左: 横から見た 1 モジュール
+    for name, js in parts.items():
+        L = lay.layers[name]
+        q = [pts[j] for j in js]
+        c = COL[L]
+        if len(q) == 2:
+            ax.plot([q[0][0], q[1][0]], [q[0][1], q[1][1]], color=c, lw=6, solid_capstyle="round", alpha=0.85, zorder=L)
+        else:
+            ax.add_patch(patches.Polygon([p for p in q], closed=True, color=c, alpha=0.7, zorder=L))
+        mx = sum(p[0] for p in q) / len(q); my = sum(p[1] for p in q) / len(q)
+        ax.text(mx, my, f"{LINK_NAME[name.rstrip(chr(39))]}{chr(39) if name.endswith(chr(39)) else ''}\n層{L}",
+                fontsize=7, ha="center", va="center", zorder=20, color="k")
+    # フレーム（B, B', O）とクランク
+    fr = [pts["B"], pts["O"], pts["B'"]]
+    ax.plot([p[0] for p in fr], [p[1] for p in fr], "--", color="#555", lw=1.2, zorder=0)
+    ax.add_patch(patches.Circle(pts["O"], leg.length("m"), fill=False, ls=":", color="#555"))
+    ax.plot([pts["O"][0], pts["A"][0]], [pts["O"][1], pts["A"][1]], color="#333", lw=4, zorder=8)
+    for j in ["A", "B", "C", "D", "E", "F", "B'", "C'", "D'", "E'", "F'", "O"]:
+        p = pts[j]
+        style = dict(s=70, zorder=30, edgecolors="k")
+        if j == "O": ax.scatter(*p, c="k", **style)
+        elif j in ("B", "B'"): ax.scatter(*p, c="#555", marker="s", **style)
+        elif j == "A": ax.scatter(*p, c="#333", marker="D", **style)
+        else: ax.scatter(*p, c="white", **style)
+        dx, dy = (2.2, 1.6)
+        ax.text(p[0] + dx, p[1] + dy, j if j != "O" else "O（クランク軸）", fontsize=11, zorder=31)
+    for j in ("P", "P'"):
+        ax.scatter(*pts[j], c="#d62728", s=60, zorder=30, edgecolors="k")
+        ax.text(pts[j][0] + 1.5, pts[j][1] - 3, "足先", fontsize=9, color="#d62728")
+    ax.set_aspect("equal"); ax.grid(alpha=0.2)
+    ax.set_title("横から見た図（右が前。' は後ろの脚）\n■ = フレーム板に固定のピン、◆ = クランクピン、○ = 動く関節", fontsize=10)
+    ax.set_xlabel("前後 [mm]"); ax.set_ylabel("上下 [mm]（クランク軸 = 0）")
+
+    # ---- 右: 断面（層とピン）
+    rows = ["ウェブ（層 0）"] + [f"層 {i}" for i in range(1, N + 1)] + [f"ウェブ（層 {N + 1}）", "フレーム板"]
+    ny = len(rows)
+    for i, r in enumerate(rows):
+        y = i
+        bx.add_patch(patches.Rectangle((-0.5, y - 0.38), 11.0, 0.76, color="#eeeeee" if "層 " in r and "ウェブ" not in r else "#d9d9d9", zorder=0))
+        bx.text(-0.7, y, r, ha="right", va="center", fontsize=10)
+    joints = ["A", "B", "C", "D", "E", "F", "B'", "C'", "D'", "E'", "F'"]
+    for x, j in enumerate(joints):
+        att = [(lay.layers[n], n) for n, js in parts.items() if j in js]
+        ls = [l for l, _ in att]
+        if j == "A": lo, hi = 0, N + 1
+        elif j in ("B", "B'"):
+            lo, hi = (min(ls), N + 2) if lay.fixed_pin_side[j] == "high" else (0, max(ls))
+        else: lo, hi = min(ls), max(ls)
+        bx.plot([x, x], [lo - 0.3, hi + 0.3], color="#333", lw=5, solid_capstyle="round", zorder=2)
+        for l, n in att:
+            bx.add_patch(patches.FancyBboxPatch((x - 0.36, l - 0.28), 0.72, 0.56, boxstyle="round,pad=0.02",
+                                                color=COL[l], zorder=3))
+            nm = LINK_NAME[n.rstrip("'")] + ("'" if n.endswith("'") else "")
+            bx.text(x, l, nm, ha="center", va="center", fontsize=8, zorder=4)
+        if j == "A":
+            for l in (0, N + 1):
+                bx.add_patch(patches.FancyBboxPatch((x - 0.36, l - 0.28), 0.72, 0.56, boxstyle="round,pad=0.02", color="#666", zorder=3))
+                bx.text(x, l, "ウェブ", ha="center", va="center", fontsize=8, color="w", zorder=4)
+        if j in ("B", "B'"):
+            bx.add_patch(patches.FancyBboxPatch((x - 0.36, N + 2 - 0.28), 0.72, 0.56, boxstyle="round,pad=0.02", color="#888", zorder=3))
+            bx.text(x, N + 2, "固定", ha="center", va="center", fontsize=8, color="w", zorder=4)
+        span = (hi - lo + 1) if j != "A" else N + 2
+        bx.text(x, -0.9, j, ha="center", fontsize=12)
+    bx.set_xlim(-3.2, 10.8); bx.set_ylim(-1.4, ny - 0.4)
+    bx.axis("off")
+    bx.set_title("断面（下から上へ部品を重ねる順番）。黒い棒 = φ3 のピン、色の箱 = そのピンでつながる部品\n"
+                 "部品の間には 0.3 mm のワッシャ。板 1.5 mm + ワッシャ 0.3 mm = 1 層 1.8 mm", fontsize=10)
+    fig.tight_layout()
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "joints.png"
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    return path

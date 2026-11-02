@@ -82,3 +82,42 @@ def test_side_sensor_looks_inside_the_cell():
     look, beam = side_sensor_geometry()
     assert 30.0 < look < 84.0 - 15.0
     assert beam > 0
+
+
+def test_parts_list_counts():
+    """部品表の数: リンク・三角形 72、ピン 60 + クランクピン 6（1 モジュール 11 本 × 6）。"""
+    from jansen import JansenLeg
+    from jansen.parts_list import build_parts_list, pin_specs
+
+    text = build_parts_list(DEFAULT_SCALE, DEFAULT_THROWS, CENTER_WIDTH, BUILD)
+    assert "リンク・三角形 72 個" in text
+    pins = pin_specs(JansenLeg(scale=DEFAULT_SCALE), BUILD)
+    assert len(pins) == 11
+    for p in pins:  # ピンはつなぐ部品の範囲より長い
+        assert p.length >= (p.members[-1][0] - p.members[0][0]) * (BUILD.plate + BUILD.washer) + BUILD.plate - 1e-9
+
+
+def test_every_pin_keeps_one_retaining_end():
+    """面一（接着）にする端があっても、クランクピン以外のどのピンにも E リングの端が 1 つは残る。"""
+    from jansen import JansenLeg
+    from jansen.parts_list import RING, pin_specs
+
+    for p in pin_specs(JansenLeg(scale=DEFAULT_SCALE), BUILD):
+        if p.joint != "A":
+            assert RING in p.ends, p.joint
+
+
+def test_print_kit_bosses_and_pins():
+    """試作キット: ボスは正の高さで、どの部品も片面だけ。ピンの両端は頭か接着で、どれも抜けない。"""
+    from jansen import JansenLeg
+    from jansen.print_kit import boss_plan, kit_parts, pin_plan
+
+    leg = JansenLeg(scale=DEFAULT_SCALE)
+    plan = boss_plan(leg, BUILD)
+    assert all(0.1 < h < 6.0 for h in plan.values())
+    assert "frame" not in {o for o, _ in plan}  # フレーム板にはボスなし（外側の面は次のモジュール用に空ける）
+    parts = kit_parts(leg, BUILD)
+    assert len(parts) == 17
+    for p in pin_plan(leg, BUILD):
+        assert all(e in ("頭", "接着", "接着（面一）") for e in p["ends"])
+        assert p["length"] > 0
