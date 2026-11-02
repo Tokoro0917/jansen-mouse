@@ -8,12 +8,15 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .assembly import BuildParams, module_parts, solve_layers
+from .assembly import BuildParams, _module_poses, _shape, module_parts, solve_layers
 from .body import HOLDER_D, HOLDER_W, holder_dims, default_design
 from .linkage import JansenLeg
 
 HOLE = 3.2           # ピン穴（cad/parts.scad の HOLE）
 RETAIN = 1.5         # ピンの抜け止め（E リングの溝）に片側で要る長さ [mm]
+ERING_R = 3.2        # E リング（φ3 軸用、外径 6 mm 前後）の半径 + 逃げ [mm]
+RING = "E リング"
+FLUSH = "面一・接着"
 LINK_NAME = {"j": "リンク j", "k": "リンク k", "c": "リンク c", "f": "リンク f",
              "U": "上三角形", "T": "足三角形"}
 SCAD_PART = {"j": "bar_j", "k": "bar_k", "c": "bar_c", "f": "bar_f", "U": "tri_upper", "T": "tri_foot"}
@@ -27,6 +30,7 @@ class PinSpec:
     sleeves: list[float]             # 部品の間の空いた層を埋めるスリーブの長さ [mm]
     washers: int
     note: str
+    ends: tuple[str, str] = (RING, RING)   # (層の小さい側の端, 大きい側の端) の処理
 
 
 def _apex(s01: float, s02: float, s12: float) -> tuple[float, float]:
@@ -42,7 +46,32 @@ def _tri_size(leg: JansenLeg, a: str, b: str, c: str, w: float) -> tuple[float, 
     return max(xs) - min(xs) + w, py + w
 
 
+def _sweepers(leg: JansenLeg, bp: BuildParams, joint: str, radius: float, samples: int = 72) -> set[int]:
+    """クランク 1 回転のどこかで、関節 joint の中心から radius 以内を通る（その関節に付いていない）部品の層。"""
+    from shapely.geometry import Point
+
+    lay = solve_layers(leg, bp)
+    parts = module_parts()
+    web_r = leg.length("m") + bp.link_width / 2 + 1.0
+    out: set[int] = set()
+    for k in range(samples):
+        pose = _module_poses(leg, 2 * math.pi * k / samples)
+        c = Point(pose[joint]).buffer(radius)
+        for name, js in parts.items():
+            if joint not in js and _shape(name, js, pose, leg, bp).intersects(c):
+                out.add(lay.layers[name])
+        if joint != "A" and Point(pose["O"]).buffer(web_r).intersects(c):
+            out |= {0, lay.n_layers + 1}
+    return out
+
+
 def pin_specs(leg: JansenLeg, bp: BuildParams) -> list[PinSpec]:
+    """関節ごとのピン。端の外側の層を部品が通るなら、その端は E リングを付けず面一にする。
+
+    E リングは端の部品の外に出っ張る（外径 6 mm 前後）。ピンの先も抜け止めの溝の分 1.5 mm 出る。
+    その外側の層（隣の層）を、クランク 1 回転のどこかで別の部品が通ると当たるので、その端は
+    ピンを端の部品に接着（または圧入）して面一にする。もう一方の端の E リングで抜け止めになる。
+    """
     lay = solve_layers(leg, bp)
     n = lay.n_layers
     pitch = bp.plate + bp.washer
@@ -56,7 +85,7 @@ def pin_specs(leg: JansenLeg, bp: BuildParams) -> list[PinSpec]:
         m = sorted(joints[j])
         if j == "A":
             m = [(0, "ウェブ")] + m + [(n + 1, "ウェブ")]
-            note = "クランクピン。両端をクランクウェブに圧入（抜け止めなし）"
+            note = "クランクピン。両端をクランクウェブに圧入"
         elif j in ("B", "B'"):
             frame = n + 2 if lay.fixed_pin_side[j] == "high" else -1
             m = sorted(m + [(frame, "フレーム板")])
@@ -64,10 +93,15 @@ def pin_specs(leg: JansenLeg, bp: BuildParams) -> list[PinSpec]:
         else:
             note = ""
         ls = [l for l, _ in m]
+        if j == "A":
+            ends = (FLUSH, FLUSH)
+        else:
+            near = _sweepers(leg, bp, j, ERING_R)
+            ends = tuple(FLUSH if adj in near else RING for adj in (ls[0] - 1, ls[-1] + 1))
         grip = (ls[-1] - ls[0]) * pitch + bp.plate
-        length = grip if j == "A" else grip + 2 * RETAIN
+        length = grip + RETAIN * sum(e == RING for e in ends)
         sleeves = [(b - a) * pitch - bp.plate - bp.washer for a, b in zip(ls, ls[1:]) if b - a > 1]
-        out.append(PinSpec(j, m, length, sleeves, len(ls) - 1, note))
+        out.append(PinSpec(j, m, length, sleeves, len(ls) - 1, note, ends))
     return out
 
 
@@ -140,18 +174,20 @@ def build_parts_list(scale: float, throws: int, center_width: float, bp: BuildPa
         "",
         "## 3. ピンとスペーサ（1 モジュールあたり）",
         "",
-        f"ピンは φ3 の丸棒（ステンレス / 鋼）。長さ = つなぐ部品の範囲 + 抜け止め（E リングの溝）片側 {RETAIN} mm。"
+        f"ピンは φ3 の丸棒（ステンレス / 鋼）。長さ = つなぐ部品の範囲 + E リングを付ける端ごとに {RETAIN} mm（溝の分）。"
+        "端の外側の層を別の部品が通る所は、E リングもピンの出っ張りも当たるので、**ピンを端の部品に接着（または圧入）して面一**にし、"
+        "もう一方の端の E リングで抜け止めにする（クランク 1 回転を 72 姿勢に分けて、E リングの外径 6.4 mm で確認）。"
         "途中で空いている層は、内径 3.2・外径 4 mm 以下のスリーブで埋める（脚の層は外径 4 mm のピンで干渉を確認している）。",
         "",
-        "| 関節 | つなぐ部品（層） | ピンの長さ | スリーブ | ワッシャ | 備考 |",
-        "|---|---|---|---|---|---|",
+        "| 関節 | つなぐ部品（層） | ピンの長さ | 端（層の小さい側 / 大きい側） | スリーブ | ワッシャ | 備考 |",
+        "|---|---|---|---|---|---|---|",
     ]
     pins = pin_specs(leg, bp)
     for p in pins:
         mem = "、".join(f"{LINK_NAME.get(nm.rstrip(chr(39)), nm)}{chr(39) if nm.endswith(chr(39)) else ''}（{l}）"
                        for l, nm in p.members)
         sl = "、".join(f"{s:.1f} mm" for s in p.sleeves) or "—"
-        lines.append(f"| {p.joint} | {mem} | {p.length:.1f} mm | {sl} | {p.washers} | {p.note} |")
+        lines.append(f"| {p.joint} | {mem} | {p.length:.1f} mm | {p.ends[0]} / {p.ends[1]} | {sl} | {p.washers} | {p.note} |")
     by_len: dict[float, int] = {}
     for p in pins:
         if p.joint != "A":
@@ -162,7 +198,7 @@ def build_parts_list(scale: float, throws: int, center_width: float, bp: BuildPa
             sleeves[round(s, 1)] = sleeves.get(round(s, 1), 0) + 1
     crank = next(p for p in pins if p.joint == "A")
     n_washer = sum(p.washers for p in pins)
-    n_ering = sum(2 for p in pins if p.joint != "A")  # ピンの両端（クランクピンは圧入）
+    n_ering = sum(e == RING for p in pins for e in p.ends)
     lines += [
         "",
         "1 台分（× " + str(modules) + " モジュール）:",

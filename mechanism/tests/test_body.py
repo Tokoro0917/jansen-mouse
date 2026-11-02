@@ -95,3 +95,13 @@ def test_parts_list_counts():
     assert len(pins) == 11
     for p in pins:  # ピンはつなぐ部品の範囲より長い
         assert p.length >= (p.members[-1][0] - p.members[0][0]) * (BUILD.plate + BUILD.washer) + BUILD.plate - 1e-9
+
+
+def test_every_pin_keeps_one_retaining_end():
+    """面一（接着）にする端があっても、クランクピン以外のどのピンにも E リングの端が 1 つは残る。"""
+    from jansen import JansenLeg
+    from jansen.parts_list import RING, pin_specs
+
+    for p in pin_specs(JansenLeg(scale=DEFAULT_SCALE), BUILD):
+        if p.joint != "A":
+            assert RING in p.ends, p.joint
