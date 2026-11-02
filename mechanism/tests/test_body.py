@@ -105,3 +105,19 @@ def test_every_pin_keeps_one_retaining_end():
     for p in pin_specs(JansenLeg(scale=DEFAULT_SCALE), BUILD):
         if p.joint != "A":
             assert RING in p.ends, p.joint
+
+
+def test_print_kit_bosses_and_pins():
+    """試作キット: ボスは正の高さで、どの部品も片面だけ。ピンの両端は頭か接着で、どれも抜けない。"""
+    from jansen import JansenLeg
+    from jansen.print_kit import boss_plan, kit_parts, pin_plan
+
+    leg = JansenLeg(scale=DEFAULT_SCALE)
+    plan = boss_plan(leg, BUILD)
+    assert all(0.1 < h < 6.0 for h in plan.values())
+    assert "frame" not in {o for o, _ in plan}  # フレーム板にはボスなし（外側の面は次のモジュール用に空ける）
+    parts = kit_parts(leg, BUILD)
+    assert len(parts) == 17
+    for p in pin_plan(leg, BUILD):
+        assert all(e in ("頭", "接着", "接着（面一）") for e in p["ends"])
+        assert p["length"] > 0

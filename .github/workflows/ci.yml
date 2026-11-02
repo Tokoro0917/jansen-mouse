@@ -24,6 +24,7 @@ jobs:
           python -m jansen.cli report -o ../docs/jansen_report.md
           python -m jansen.cli assembly -o ../cad/assembly_generated.scad
           python -m jansen.cli parts -o ../docs/parts_list.md
+          python -m jansen.cli kit -o ../cad/print_kit_generated.scad
           git diff --exit-code
 
   cad:
@@ -43,6 +44,9 @@ jobs:
             openscad --hardwarnings -D "PART=\"$p\"" -o "/tmp/$p.dxf" parts.scad
           done
           openscad --hardwarnings -o /tmp/assembly.stl assembly_generated.scad
+          for p in j_front j_back k_front k_back c_front c_back f_front f_back U_front U_back T_front T_back web_inner web_outer frame_outer frame_inner hex_axle assembled; do
+            openscad --hardwarnings -D "PART=\"$p\"" -o "/tmp/kit_$p.stl" print_kit_generated.scad
+          done
 
   firmware:
     runs-on: ubuntu-latest
