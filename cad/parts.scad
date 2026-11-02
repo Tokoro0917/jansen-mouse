@@ -5,16 +5,21 @@
 //   openscad -D 'PART="layout"' -o leg_layout.stl parts.scad
 include <links_generated.scad>
 
-PART = "layout";   // layout | bar | tri_upper | tri_foot | web | web_motor | frame | coupler
-                   // | bridge | motor_clamp | sensor_holder | deck_outline | none
+PART = "layout";   // layout | bar | bar_j | bar_k | bar_c | bar_f | tri_upper | tri_foot | web | web_motor | frame
+                   // | coupler | bridge | motor_clamp | sensor_holder | deck_outline | none
+                   // 3D プリント用（造形の向きにして床 z = 0 に置く）: print_bridge | print_motor_clamp | print_sensor_holder
+// FDM の 3D プリンタは穴が小さめにできるので、穴の径をこの分だけ大きくする（例: -D FDM_CLEAR=0.2）。
+// レーザー加工・光造形では 0 のまま。
+FDM_CLEAR = 0;
 
 T = PLATE;         // 板厚 [mm]
 W = LINK_W;        // リンク幅 [mm]
-HOLE = 3.2;        // ピン穴（φ3 シャフト / M3 ネジ）
-PIN_PRESS = 2.9;   // クランクピン圧入穴（ウェブ側）
-HEX_AF = 3.15;     // 六角シャフト 3 mm（二面幅）+ 逃げ。60° 刻みで位相を変えられる
-JOURNAL = 3.8;     // フレーム板の軸受穴（六角シャフトの対角 3.46 mm + 逃げ）
-SPACER_HOLE = 2.2; // M2 スペーサ
+HOLE = 3.2 + FDM_CLEAR;        // ピン穴（φ3 シャフト / M3 ネジ）
+PIN_PRESS = 2.9 + FDM_CLEAR;   // クランクピン圧入穴（ウェブ側）
+HEX_AF = 3.15 + FDM_CLEAR;     // 六角シャフト 3 mm（二面幅）+ 逃げ。60° 刻みで位相を変えられる
+JOURNAL = 3.8 + FDM_CLEAR;     // フレーム板の軸受穴（六角シャフトの対角 3.46 mm + 逃げ）
+SPACER_HOLE = 2.2 + FDM_CLEAR; // M2 スペーサ
+D_HOLE = 3.1 + FDM_CLEAR;      // モータ出力軸（φ3 D カット）
 $fn = 48;
 
 module holes(pts, d = HOLE) { for (p = pts) translate(p) circle(d = d); }
@@ -48,7 +53,7 @@ module tri_foot() { tri_plate(L_g, L_i, L_h, foot = true); }
 // クランクウェブ: 組立クランク軸の腕。O に六角穴、A にクランクピン圧入穴。
 // 1 モジュールに 2 枚（脚の層の両側）。モジュール間の位相は六角穴で 60° 刻みに合わせる。
 // motor = true は最も内側のウェブ用で、O にモータ出力軸（φ3 D カット）を直接差し込む。
-module d_hole() { intersection() { circle(d = 3.1); translate([-2, -1.6]) square([4, 4.1]); } }
+module d_hole() { intersection() { circle(d = D_HOLE); translate([-2, -1.6 - FDM_CLEAR / 2]) square([4, 4.1]); } }
 module web(motor = false) {
   linear_extrude(T) difference() {
     hull() { circle(d = W + 2); translate([L_m, 0]) circle(d = W); }
@@ -110,7 +115,7 @@ module motor_clamp() {
       translate([CLAMP_X[0] - 3, BRIDGE_Y[0], MOTOR_Z[0] - WALL]) cube([CLAMP_X[1] - CLAMP_X[0] + 6, wid, WALL]);
       for (x = CLAMP_X) translate([x, 0, MOTOR_Z[0] - WALL]) cylinder(d = 6, h = BRIDGE_Z[0] - MOTOR_Z[0] + WALL);
     }
-    for (x = CLAMP_X) translate([x, 0, MOTOR_Z[0] - WALL - 1]) cylinder(d = 2.2, h = 40);
+    for (x = CLAMP_X) translate([x, 0, MOTOR_Z[0] - WALL - 1]) cylinder(d = 2.2 + FDM_CLEAR, h = 40);
   }
 }
 
@@ -130,7 +135,7 @@ module coupler() {
   difference() {
     cylinder(d = 8, h = 12);
     translate([0, 0, -0.1]) linear_extrude(6.1) intersection() {
-      circle(d = 3.1); translate([-2, -1.6]) square([4, 4.1]);  // D カット（平面 2.5 mm）
+      circle(d = D_HOLE); translate([-2, -1.6 - FDM_CLEAR / 2]) square([4, 4.1]);  // D カット（平面 2.5 mm）
     }
     translate([0, 0, 6]) linear_extrude(6.1) hex_hole(HEX_AF);
   }
@@ -147,7 +152,7 @@ module sensor_holder() {
       translate([-d, -w / 2, -hgt]) cube([d, w, hgt]);
       translate([-d, -1.5, 0]) cube([3.0, 3.0, 0.8]);  // ほぞ（基板の穴 3.2 x 3.2 に差す）
     }
-    for (z = [HOLDER[3], HOLDER[4]]) translate([-d - 1, 0, -z]) rotate([0, 90, 0]) cylinder(d = 3.2, h = d + 2);
+    for (z = [HOLDER[3], HOLDER[4]]) translate([-d - 1, 0, -z]) rotate([0, 90, 0]) cylinder(d = 3.2 + FDM_CLEAR, h = d + 2);
     // 後ろの面の溝: 発光・受光の足（ピッチ 2.54）を基板まで沿わせる（足が短ければ線を継ぐ）
     for (y = [-1.27, 1.27]) translate([-d - 0.1, y - 0.6, -HOLDER[3]]) cube([1.0, 1.2, HOLDER[3] + 0.1]);
   }
@@ -159,6 +164,17 @@ module placed_holders() {
 }
 
 if (PART == "bar") bar(L_j);
+if (PART == "bar_j") bar(L_j);
+if (PART == "bar_k") bar(L_k);
+if (PART == "bar_c") bar(L_c);
+if (PART == "bar_f") bar(L_f);
+// 3D プリント用の向き
+if (PART == "print_bridge")  // 天板を下にする（リブとボスが上に立つ）
+  translate([0, 0, BRIDGE_Z[1]]) rotate([180, 0, 0]) bridge();
+if (PART == "print_motor_clamp")  // 底板を下にする
+  translate([0, 0, -(MOTOR_Z[0] - WALL)]) motor_clamp();
+if (PART == "print_sensor_holder")  // 横に寝かせる（幅 6 mm の面を下に。穴は水平）
+  translate([0, 0, HOLDER[0] / 2]) rotate([90, 0, 0]) sensor_holder();
 if (PART == "tri_upper") tri_upper();
 if (PART == "tri_foot") tri_foot();
 if (PART == "web") web();

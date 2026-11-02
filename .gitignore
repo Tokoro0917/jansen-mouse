@@ -10,3 +10,4 @@ firmware/.pio/
 
 # CAD 出力
 *.stl
+cad/print/
