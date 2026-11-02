@@ -419,7 +419,7 @@ def build_footprint_table(center_width: float) -> str:
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="jansen")
     p.add_argument("command",
-                   choices=["report", "plot", "anim", "header", "scad", "footprint", "assembly", "body", "drawing", "parts"])
+                   choices=["report", "plot", "anim", "header", "scad", "footprint", "assembly", "body", "drawing", "parts", "guide"])
     p.add_argument("--scale", type=float, default=DEFAULT_SCALE)
     p.add_argument("--throws", type=int, default=DEFAULT_THROWS)
     p.add_argument("--theta", type=float, default=30.0, help="assembly のクランク角 [deg]")
@@ -442,6 +442,10 @@ def main(argv=None) -> None:
         from .drawing import joint_diagram, three_views
         print(three_views(args.scale, args.throws, CENTER_WIDTH, BUILD, args.out or Path("out")))
         print(joint_diagram(args.scale, BUILD, args.out or Path("out")))
+    elif args.command == "guide":
+        from .assembly_guide import build_guide
+        for p in build_guide(args.scale, args.throws, CENTER_WIDTH, BUILD, args.out or Path("out")):
+            print(p)
     elif args.command == "parts":
         from .parts_list import build_parts_list
         text = build_parts_list(args.scale, args.throws, CENTER_WIDTH, BUILD)

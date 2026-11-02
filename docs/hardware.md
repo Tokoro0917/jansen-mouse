@@ -144,6 +144,8 @@ KOGUMA Mk4（`Tokoro0917/koguma-mk4` の `docs/spec.md`「壁センサ」と `me
 
 ## 組み立て・調整手順
 
+機構の組み立て（脚の重ね方・モジュールのつなぎ方）は [assembly.md](assembly.md)。
+
 1. `cad/parts.scad` で部品を出力（`PART` を切り替え）。脚 1 本あたり: バー j, k, c, f 各 1、上三角形 1、足三角形 1。
    後脚は同じ部品を裏返して使う。機体の部品は `bridge`・`motor_clamp`・`sensor_holder`（STL、ホルダは黒い樹脂の光造形で 4 個）、`deck_outline`（DXF、基板の外形）。
 
