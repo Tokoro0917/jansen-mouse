@@ -4,6 +4,12 @@
 
     フレーム板 | クランクウェブ | 脚の層 1..N | クランクウェブ | フレーム板 ...
 
+板と板の間にはすべてワッシャが入る（フレーム板とウェブの間も）。層の番号は、自分の
+フレーム板 = -1、ウェブ = 0 と N+1、脚 = 1..N、次のモジュールのフレーム板 = N+2。
+層 l の下面は自分のフレーム板の内側の面から (l + 1) * (板厚 + ワッシャ) の位置にある
+（layer_offset）。モジュール厚は板 N+3 枚（フレーム板 1・ウェブ 2・脚 N）+ ワッシャ N+3 枚
+= (N + 3) * (板厚 + ワッシャ)（module_thickness）。
+
 リンク j, k は回転中にクランク中心 O の上を通過するため、脚の層を貫く通し軸は置けない。
 そこで自転車のクランク軸のように、2 枚のウェブの間にクランクピン A だけを渡す（組立クランク軸）。
 固定ピン B / B' はどちらかのフレーム板から片持ちで立てる。
@@ -51,9 +57,31 @@ class ModuleLayout:
     layers: dict[str, int]            # 部品名 -> 層番号（1..n_layers）
     n_layers: int
     fixed_pin_side: dict[str, str]    # 固定ピン -> 立てる側 ("low" / "high")
-    thickness: float                  # ウェブ 2 枚・フレーム板 1 枚を含むモジュール厚 [mm]
+    thickness: float                  # ウェブ 2 枚・フレーム板 1 枚・ワッシャ N+3 枚を含むモジュール厚 [mm]
     length: float                     # 前後方向の全長（脚の掃引範囲）[mm]
     extra: dict = field(default_factory=dict)
+
+
+def layer_pitch(bp: BuildParams) -> float:
+    """層の間隔 = 板厚 + ワッシャ [mm]。"""
+    return bp.plate + bp.washer
+
+
+def layer_offset(layer: int, bp: BuildParams) -> float:
+    """自分のフレーム板の内側（中央側）の面から、層 layer の下面までの距離 [mm]。
+
+    層 -1 = 自分のフレーム板（0）、0 = 内側のウェブ（フレーム板 + ワッシャ）、
+    N+1 = 外側のウェブ、N+2 = 次のモジュールのフレーム板（= モジュール厚）。
+    """
+    return (layer + 1) * layer_pitch(bp)
+
+
+def module_thickness(n_layers: int, bp: BuildParams) -> float:
+    """1 モジュール（フレーム板 1 枚 + ウェブ 2 枚 + 脚 N 層 + ワッシャ N+3 枚）の厚さ [mm]。
+
+    フレーム板 | ワッシャ | ウェブ | ワッシャ | 脚 1 | ... | 脚 N | ワッシャ | ウェブ | ワッシャ | 次のフレーム板
+    """
+    return layer_offset(n_layers + 2, bp)
 
 
 def _mirror(p):
@@ -170,7 +198,7 @@ def solve_layers(leg: JansenLeg, bp: BuildParams = BuildParams(), max_layers: in
 
         if bt(0):
             sides = {j: _pin_choice(j, joints[j], layers, top, pin_hit[j])[2] for j in FIXED_JOINTS}
-            thickness = (n_layers + 2) * (bp.plate + bp.washer) + bp.plate
+            thickness = module_thickness(n_layers, bp)
             return ModuleLayout(dict(layers), n_layers, sides, thickness, xmax - xmin,
                                 extra={"x_range": (xmin, xmax)})
     raise RuntimeError("no feasible layer assignment")

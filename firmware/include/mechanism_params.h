@@ -9,8 +9,8 @@ constexpr float kStanceLengthMm = 21.2250f;   // 1 本の足の接地区間の�
 constexpr float kCrankHeightMm = 36.7336f;   // クランク中心の対地高さ
 constexpr float kStepHeightMm = 8.9828f;
 constexpr float kBodyLengthMm = 92.7f;
-constexpr float kBodyWidthMm = 113.6f;
-constexpr float kLegGroupPitchMm = 69.8f;  // 左右脚群の中心間距離
+constexpr float kBodyWidthMm = 115.4f;
+constexpr float kLegGroupPitchMm = 70.7f;  // 左右脚群の中心間距離
 
 // 壁センサの位置（機体中心 = クランク軸の真下から。x 前, y 左）。脚の掃引域を避けた配置（jansen/body.py）
 // 4 本とも基板の前端より内側の裏に下げる（前に突き出さない）

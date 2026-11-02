@@ -326,11 +326,10 @@ def build_assembly(scale: float, throws: int, theta_deg: float) -> str:
     """指定クランク角での全体組立図（OpenSCAD）。parts.scad の部品を配置する。"""
     import numpy as np
 
-    from .assembly import _module_poses, module_parts
+    from .assembly import _module_poses, layer_offset, module_parts
 
     leg = JansenLeg(scale=scale)
     lay = footprint(scale, throws, CENTER_WIDTH, BUILD).layout
-    pitch = BUILD.plate + BUILD.washer
     module_t = lay.thickness
     ground = gait_metrics(leg).ground_y
     out = ["// 自動生成: python -m jansen.cli assembly （手で編集しないこと）",
@@ -355,10 +354,10 @@ def build_assembly(scale: float, throws: int, theta_deg: float) -> str:
         for mod in range(throws):
             th = math.radians(theta_deg) + 2 * math.pi * mod / throws
             pose = {k: np.asarray(v) for k, v in _module_poses(leg, th).items()}
-            base = CENTER_WIDTH / 2 + mod * module_t + BUILD.plate  # フレーム板の外側から
-            def z_of(layer):
-                return side * (base + layer * pitch) - (BUILD.plate if side < 0 else 0)
-            out.append(f"color(\"Gray\") translate([0,0,{side * (base - BUILD.plate) - (BUILD.plate if side < 0 else 0):.3f}]) frame();")
+            base = CENTER_WIDTH / 2 + mod * module_t  # このモジュールのフレーム板の内側の面
+            def z_of(layer):  # 層 -1 = フレーム板、0 = 内側のウェブ（間にワッシャ）
+                return side * (base + layer_offset(layer, BUILD)) - (BUILD.plate if side < 0 else 0)
+            out.append(f"color(\"Gray\") translate([0,0,{z_of(-1):.3f}]) frame();")
             for wl in (0, lay.n_layers + 1):
                 place(pose["O"], pose["A"], None, z_of(wl), "DimGray", "web()")
             for name, joints in parts.items():
