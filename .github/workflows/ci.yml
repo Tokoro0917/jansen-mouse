@@ -23,6 +23,7 @@ jobs:
           python -m jansen.cli scad -o ../cad/links_generated.scad
           python -m jansen.cli report -o ../docs/jansen_report.md
           python -m jansen.cli assembly -o ../cad/assembly_generated.scad
+          python -m jansen.cli parts -o ../docs/parts_list.md
           git diff --exit-code
 
   cad:

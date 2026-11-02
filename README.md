@@ -109,6 +109,7 @@ SIM_TRACE=1 pio test -e native -f test_sim -v       # 壁の誤検知・衝突�
 
 - [設計資料](docs/design.md) — 機構寸法の決め方、レギュレーション適合、制御方針
 - [ハードウェア](docs/hardware.md) — 部品表、ピン配置、組み立て・調整手順
+- [部品ごとの表](docs/parts_list.md) — 板の部品・3D プリント部品・ピン・スリーブ・ネジの寸法と数（自動生成）
 - [3D プリントで試作する](docs/printing.md) — STL の書き出し、部品の数、刷り方、ピンの長さ、試作の順番
 - [機構解析レポート](docs/jansen_report.md) — 自動生成のリンク長表と歩容指標
 

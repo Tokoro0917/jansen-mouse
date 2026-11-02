@@ -82,3 +82,16 @@ def test_side_sensor_looks_inside_the_cell():
     look, beam = side_sensor_geometry()
     assert 30.0 < look < 84.0 - 15.0
     assert beam > 0
+
+
+def test_parts_list_counts():
+    """部品表の数: リンク・三角形 72、ピン 60 + クランクピン 6（1 モジュール 11 本 × 6）。"""
+    from jansen import JansenLeg
+    from jansen.parts_list import build_parts_list, pin_specs
+
+    text = build_parts_list(DEFAULT_SCALE, DEFAULT_THROWS, CENTER_WIDTH, BUILD)
+    assert "リンク・三角形 72 個" in text
+    pins = pin_specs(JansenLeg(scale=DEFAULT_SCALE), BUILD)
+    assert len(pins) == 11
+    for p in pins:  # ピンはつなぐ部品の範囲より長い
+        assert p.length >= (p.members[-1][0] - p.members[0][0]) * (BUILD.plate + BUILD.washer) + BUILD.plate - 1e-9

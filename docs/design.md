@@ -54,6 +54,11 @@ Theo Jansen の Holy Numbers を縮尺 `s` [mm/unit] で縮小して使います
 
 （U = 上三角形 b-d-e、T = 足三角形 g-i-h）
 
+![脚どうしのつなぎ方](images/joints.png)
+
+前の脚と後ろの脚が共有するのは、クランクピン A（j・k・j'・k' の 4 本がつながる）と、フレーム板の固定ピン B / B' だけです。
+ピン・スリーブ・ワッシャの寸法と数は [parts_list.md](parts_list.md)（自動生成）。
+
 ![組立図](images/assembly.png)
 
 ### 2.3 縮尺・脚の本数・板厚の決め方
