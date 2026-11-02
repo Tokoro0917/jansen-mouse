@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from shapely.geometry import LineString, MultiPoint, Point, box
 from shapely.ops import unary_union
 
-from .assembly import BuildParams, _module_poses, _shape, module_parts, solve_layers
+from .assembly import BuildParams, _module_poses, _shape, layer_offset, module_parts, solve_layers
 from .linkage import JansenLeg, gait_metrics
 
 WALL_HALF_GAP = 84.0     # 区画中心から壁面まで（180/2 - 6）[mm]
@@ -97,17 +97,17 @@ def leg_obstacles(scale: float, throws: int, center_width: float, bp: BuildParam
         from shapely import affinity
         return affinity.translate(poly, 0, h)
 
-    pitch = bp.plate + bp.washer
     obs = []
+    # 脚の範囲 = 内側のウェブの下面 〜 外側のウェブの上面（両側のフレーム板との間にワッシャ 1 枚ずつ）
+    legs_lo = layer_offset(0, bp)
+    legs_hi = layer_offset(layout.n_layers + 1, bp) + bp.plate
     for side in (1, -1):
-        y = center_width / 2
-        for m in range(throws):
+        for m in range(throws + 1):
+            y = center_width / 2 + m * layout.thickness
             obs.append(Obstacle(f"frame{m}{'L' if side > 0 else 'R'}", *sorted((side * y, side * (y + bp.plate))), to_xz(frame)))
-            y += bp.plate
-            t = (layout.n_layers + 2) * pitch
-            obs.append(Obstacle(f"legs{m}{'L' if side > 0 else 'R'}", *sorted((side * y, side * (y + t))), to_xz(module_xy)))
-            y += t
-        obs.append(Obstacle(f"frame{throws}{'L' if side > 0 else 'R'}", *sorted((side * y, side * (y + bp.plate))), to_xz(frame)))
+            if m < throws:
+                obs.append(Obstacle(f"legs{m}{'L' if side > 0 else 'R'}",
+                                    *sorted((side * (y + legs_lo), side * (y + legs_hi))), to_xz(module_xy)))
     return obs, h
 
 
@@ -359,13 +359,12 @@ def support_half_width(d: BodyDesign, n: int = 180) -> float:
 
     leg = JansenLeg(scale=d.scale)
     lay = solve_layers(leg, d.build)
-    pitch = d.build.plate + d.build.washer
-    module_t = (lay.n_layers + 2) * pitch + d.build.plate
-    feet = []  # (クランク位相, 鏡像か, 横位置)
+    feet = []  # (クランク位相, 鏡像か, 横位置 = 足三角形の板の中心)
     for m in range(d.throws):
-        base = d.center_width / 2 + d.build.plate + m * module_t
+        base = d.center_width / 2 + m * lay.thickness
         for name, mirror in (("T", False), ("T'", True)):
-            feet.append((360.0 * m / d.throws, mirror, base + (lay.layers[name] + 0.5) * pitch))
+            feet.append((360.0 * m / d.throws, mirror,
+                         base + layer_offset(lay.layers[name], d.build) + d.build.plate / 2))
     worst = math.inf
     for i in range(n):
         th = 2 * math.pi * i / n

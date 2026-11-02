@@ -217,7 +217,7 @@ def build_parts_list(scale: float, throws: int, center_width: float, bp: BuildPa
     from .body import leg_obstacles
     obs, h = leg_obstacles(scale, throws, center_width, bp)
     y_out = max(abs(o.y1) for o in obs)
-    module_gap = (n + 2) * pitch
+    frame_gap = lay.thickness - bp.plate  # フレーム板の間 = ワッシャ + ウェブ + 脚 N 層 + ウェブ + ワッシャ
     hex_len = 3 * bp.plate + 2 * bp.washer
     clamp_h = b.z[0] - (mc.z[0] - 2.0)
     lines += [
@@ -228,9 +228,11 @@ def build_parts_list(scale: float, throws: int, center_width: float, bp: BuildPa
         "|---|---|---|---|",
         f"| 3 mm 六角シャフト | 長さ {hex_len:.1f} mm | {2 * (throws - 1)} | モジュールの間のつなぎ（ウェブ + フレーム板 + ウェブ）。"
         "六角穴で 120° ずつ位相を合わせる。短いのでウェブの六角穴に接着する |",
+        f"| ワッシャ（M4 用 = 内径 4.3 前後、厚さ {bp.washer} mm） | — | {2 * modules} | クランク軸 O の、フレーム板とウェブの間"
+        "（1 モジュールの両側に 1 枚ずつ）。六角シャフト（対角 3.46 mm）・モータ軸に通す |",
         f"| M2 全ねじ（タイロッド） | 約 {2 * y_out + 8:.0f} mm | 2 | 左右すべてのフレーム板とブリッジを貫く |",
         f"| M2 ナット | — | 4 | タイロッドの両端 |",
-        f"| タイロッドのスリーブ（内径 2.2） | {module_gap - bp.washer:.1f} mm | {2 * 2 * throws} | フレーム板の間（1 モジュールの厚さ）|",
+        f"| タイロッドのスリーブ（内径 2.2） | {frame_gap:.1f} mm | {2 * 2 * throws} | フレーム板の間（1 モジュールの厚さ − フレーム板）|",
         f"| M2 ネジ（基板 → ブリッジ） | 長さ 5 mm 前後 | 4 | ブリッジの下穴 φ1.8 にねじ込む |",
         f"| M2 ネジ（モータ押さえ → ブリッジ） | 長さ 約 {clamp_h + 5:.0f} mm | 2 | モータ押さえの柱を下から通す |",
         "| 足のゴム | ゴムシート / 熱収縮チューブ | " + str(4 * throws) + " | 足三角形の足先 |",

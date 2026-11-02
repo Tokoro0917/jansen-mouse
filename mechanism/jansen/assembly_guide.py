@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .assembly import BuildParams, _module_poses, module_parts, solve_layers
+from .assembly import BuildParams, _module_poses, layer_offset, module_parts, solve_layers
 from .linkage import JansenLeg
 from .parts_list import LINK_NAME, pin_specs
 
@@ -105,7 +105,7 @@ def side_scad(leg: JansenLeg, bp: BuildParams, throws: int, center_width: float,
     lay = solve_layers(leg, bp)
     n = lay.n_layers
     pitch = bp.plate + bp.washer
-    module_t = (n + 2) * pitch + bp.plate
+    module_t = lay.thickness  # フレーム板とウェブの間にもワッシャ（両側）
     la = leg.length("a")
     out = [f"include <{CAD / 'parts.scad'}>", "PART = \"none\";"]
     z_frames = []
@@ -117,15 +117,16 @@ def side_scad(leg: JansenLeg, bp: BuildParams, throws: int, center_width: float,
         out.append(f"color(\"Gray\") translate([0,0,{base:.3f}]) frame();")
         for wl in (0, n + 1):
             call = "web(motor = true)" if (mod == 0 and wl == 0) else "web()"
-            out.append(_place(pose["O"], pose["A"], None, base + bp.plate + bp.washer + wl * pitch, "DimGray", call))
+            out.append(_place(pose["O"], pose["A"], None, base + layer_offset(wl, bp), "DimGray", call))
         for name, js in module_parts().items():
             l = lay.layers[name]
             pts = [pose[j] for j in js]
             out.append(_place(pts[0], pts[1], pts[2] if len(pts) == 3 else None,
-                              base + bp.plate + bp.washer + l * pitch, LAYER_COLOR[l], CALL[name.rstrip("'")]))
+                              base + layer_offset(l, bp), LAYER_COLOR[l], CALL[name.rstrip("'")]))
         if mod > 0:  # 前のモジュールのウェブ → フレーム板 → このモジュールのウェブ を六角シャフトでつなぐ
-            z0 = base - gap - pitch
-            out.append(f"color(\"Gold\") translate([0,0,{z0:.3f}]) linear_extrude({gap + 3 * pitch:.3f}) "
+            z0 = base - gap - pitch  # 前のモジュールの外側のウェブの下面
+            hex_len = gap + 3 * bp.plate + 2 * bp.washer  # ウェブ | ワッシャ | フレーム板 | ワッシャ | ウェブ
+            out.append(f"color(\"Gold\") translate([0,0,{z0:.3f}]) linear_extrude({hex_len:.3f}) "
                        f"circle(d = 3.46, $fn = 6);")
     z_last = center_width / 2 + throws * (module_t + gap) - gap
     out.append(f"color(\"Gray\") translate([0,0,{z_last:.3f}]) frame();")
